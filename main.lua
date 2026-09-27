@@ -1,8 +1,9 @@
--- BRICK-30 — 15 classic LCD brick games in one cart for PicoDeck.
--- Entry point: loads lib + games, wires the scene manager, runs the loop.
+-- BRICK-15 — 15 classic LCD brick games in one cart for PicoDeck.
+-- Entry point: loads lib + games, wires the menu and play scenes, runs the loop.
+
+local DEBUG = false   -- true: log draw and flush counts every second
 
 local pc = picocalc
-local disp = pc.display
 
 math.randomseed(pc.sys.getTimeMs())
 
@@ -24,87 +25,83 @@ local function load_module(name)
     return load(table.concat(chunks), "@" .. name .. ".lua")()
 end
 
--- ── Load shared lib (sets globals LCD, SFX, PAD) ─────────────────────────────
+-- ── Shared lib (lcd sets globals LCD, SFX, PAD) ─────────────────────────────
 
 load_module("lib/lcd")
-local menu_mod = load_module("lib/menu")
+local Grid = load_module("lib/grid")
+local Panel = load_module("lib/panel")
+local Screen = load_module("lib/screen")
+local Scores = load_module("lib/scores")
+local Runner = load_module("lib/runner")
+local Menu = load_module("lib/menu")
 
--- ── Game registry ────────────────────────────────────────────────────────────
+-- ── Games, in menu order; a game that fails to load is left out ─────────────
 
-local GAMES = {
-    { id = "tetris",  name = "TETRIS" },
-    { id = "snake",   name = "SNAKE" },
-    { id = "breakout", name = "BREAKOUT" },
-    { id = "invaders", name = "INVADERS" },
-    { id = "frogger", name = "FROGGER" },
-    { id = "racer",   name = "RACER" },
-    { id = "pong",    name = "PONG" },
-    { id = "copter",  name = "COPTER" },
-    { id = "asteroids", name = "ASTEROIDS" },
-    { id = "memory",  name = "MEMORY" },
-    { id = "simon",   name = "SIMON" },
-    { id = "tictactoe", name = "TIC-TAC-TOE" },
-    { id = "moonlander", name = "MOON LANDER" },
-    { id = "missile", name = "MISSILE CMD" },
-    { id = "tank",    name = "TANK" },
-}
+local GAME_IDS = { "tetris" }
 
--- ── Load game modules; only loaded games join the registry ─────────────────
-
-local registry = {}
-for _, g in ipairs(GAMES) do
-    local ok, factory = pcall(function() return load_module("games/" .. g.id).new end)
+local games = {}
+for _, id in ipairs(GAME_IDS) do
+    local ok, def = pcall(load_module, "games/" .. id)
     if ok then
-        registry[#registry + 1] = {
-            num = string.format("%02d", #registry + 1),
-            name = g.name,
-            id = g.id,
-            factory = factory,
-        }
+        games[#games + 1] = def
+    else
+        pc.sys.log("[brick15] skipped " .. id .. ": " .. tostring(def))
     end
 end
+if #games == 0 then error("BRICK-15: no games loaded") end
 
--- ── Register one wrapper scene per game ──────────────────────────────────────
+-- ── Debug counters ───────────────────────────────────────────────────────────
 
-for _, g in ipairs(registry) do
-    local factory = g.factory
-    local inst
-    local sc = {}
-
-    function sc:enter()
-        picocalc.input.clearState()
-        inst = factory()
-        if inst.enter then inst:enter() end
+local stats = { draws = 0, flushes = 0, since = pc.sys.getTimeMs() }
+if DEBUG then
+    local disp = pc.display
+    for _, fn in ipairs({ "fillRect", "drawRect", "clear" }) do
+        local raw = disp[fn]
+        disp[fn] = function(...) stats.draws = stats.draws + 1 return raw(...) end
     end
-
-    function sc:update()
-        if inst then inst:update() end
-    end
-
-    function sc:draw()
-        if inst then inst:draw() end
-    end
-
-    function sc:exit()
-        if inst and inst.exit then inst:exit() end
-        inst = nil
-        picocalc.input.clearState()
-    end
-
-    pc.game.scene.add("game_" .. g.id, sc)
+    local raw_flush = disp.flushRegion
+    disp.flushRegion = function(...) stats.flushes = stats.flushes + 1 return raw_flush(...) end
 end
 
--- ── Menu + main loop ────────────────────────────────────────────────────────
+-- ── Scenes ───────────────────────────────────────────────────────────────────
 
-local menu_scene = menu_mod.new(registry)
-pc.game.scene.add("menu", menu_scene)
+local grid = Grid.new(10, 20, 12, 10)
+local screen = Screen.new(pc.display, grid, Panel.new(Grid))
+local scores = Scores.new(pc.game.save, games)
+local clock = pc.sys.getTimeMs
+
+local runner = Runner.new({ screen = screen, scores = scores, scene = pc.game.scene,
+                            clock = clock, input = pc.input })
+local menu = Menu.new({ screen = screen, games = games, scores = scores, runner = runner,
+                        scene = pc.game.scene, clock = clock, input = pc.input })
+
+-- The scene manager calls enter/update/draw/exit as plain functions (no self),
+-- so each object gets a small adapter.
+local function as_scene(obj)
+    return {
+        enter = function() obj:enter() end,
+        exit = function() obj:exit() end,
+        update = function() obj:update() end,
+        draw = function() obj:draw() end,
+    }
+end
+
+pc.game.scene.add("play", as_scene(runner))
+pc.game.scene.add("menu", as_scene(menu))
 pc.game.scene.switch("menu")
+
+-- ── Main loop ───────────────────────────────────────────────────────────────
 
 while true do
     pc.input.update()
     pc.game.scene.update()
     pc.game.scene.draw()
-    SFX.update(pc.sys.getTimeMs())
-    if menu_scene.quit then return end
+    local now = pc.sys.getTimeMs()
+    SFX.update(now)
+    if DEBUG and now - stats.since >= 1000 then
+        pc.sys.log(string.format("[brick15] draws=%d flushes=%d", stats.draws, stats.flushes))
+        stats.draws, stats.flushes, stats.since = 0, 0, now
+    end
+    if menu.quit then return end
     pc.sys.sleep(16)
 end
