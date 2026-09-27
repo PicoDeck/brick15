@@ -111,6 +111,12 @@ class Smoke:
             time.sleep(1.0)
             self.sim.launch_app(APP_DIR.name)
             time.sleep(3.0)                       # power-on curtain, then the menu
+            # A game that fails to load is left out of the menu, which would
+            # shift every later game onto the wrong script: stop here.
+            skipped = [l["text"] for l in self.sim.get_log_lines() if "[brick15] skipped" in l["text"]]
+            if skipped:
+                self.failures += [f"game failed to load: {t}" for t in skipped]
+                return self.report(game_ids)
             self.shot("menu")
             self.sim.keypress("up")
             time.sleep(0.3)
@@ -151,7 +157,9 @@ class Smoke:
         finally:
             self.sim.stop()
             shutil.rmtree(stage, ignore_errors=True)
+        return self.report(game_ids)
 
+    def report(self, game_ids):
         if self.failures:
             print("\nSMOKE FAILED")
             for f in self.failures:
