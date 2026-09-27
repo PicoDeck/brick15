@@ -1,67 +1,86 @@
--- menu.lua — the BRICK-30 collection menu scene.
--- Expects globals: LCD, SFX, PAD, disp, picocalc.
+-- menu.lua — the brick-style game selector. The grid shows the game number
+-- in big brick digits over the game's demo; the panel shows its name,
+-- record and the chosen SPEED. Needs the LCD, SFX and PAD globals.
 
-local disp = picocalc.display
-local save = picocalc.game.save
-local scene_mgr = picocalc.game.scene
+local DEMO_MS = 400   -- each demo frame shows this long
 
-local function new(games)
-    local sel = 1
-    local scene = {}
-    scene.quit = false
+local Menu = {}
+Menu.__index = Menu
 
-    function scene:enter()
-        picocalc.input.setRepeat(350, 90)
-        SFX.play({ { 440, 60 }, { 660, 60 }, { 880, 90 } })
-    end
-
-    function scene:update()
-        local p = PAD.pressed()
-        if p.up then
-            sel = sel - 1
-            if sel < 1 then sel = #games end
-            SFX.select()
-        elseif p.down then
-            sel = sel + 1
-            if sel > #games then sel = 1 end
-            SFX.select()
-        elseif p.esc then
-            scene.quit = true
-        elseif p.enter then
-            SFX.start()
-            picocalc.input.clearState()
-            scene_mgr.switch("game_" .. games[sel].id)
-        end
-    end
-
-    function scene:draw()
-        LCD.clear()
-        disp.drawRect(4, 4, 312, 312, LCD.MID)
-        disp.drawRect(8, 8, 304, 304, LCD.MID)
-
-        LCD.textCentered("BRICK-30", 14, 3, LCD.DARK)
-        LCD.textCentered("15 GAMES 1 CART", 34, 1, LCD.MID)
-
-        for i, g in ipairs(games) do
-            local y = 48 + (i - 1) * 16
-            local color
-            if i == sel then
-                disp.fillRect(10, y - 2, 300, 14, LCD.DARK)
-                color = LCD.BG
-            else
-                color = LCD.DARK
-            end
-            LCD.text(g.num .. " " .. g.name, 16, y, 2, color)
-            local hi = (save.get("hi_" .. g.id) or {}).v or 0
-            local hi_str = "HI " .. hi
-            LCD.text(hi_str, 304 - LCD.textWidth(hi_str, 2), y, 2, color)
-        end
-
-        LCD.textCentered("D-PAD SELECT  ENTER PLAY  ESC QUIT", 302, 1, LCD.MID)
-        disp.flush()
-    end
-
-    return scene
+-- deps: { screen, games, scores, runner, scene, clock (-> ms), input }
+function Menu.new(deps)
+    return setmetatable({ screen = deps.screen, games = deps.games,
+                          scores = deps.scores, runner = deps.runner,
+                          scene = deps.scene, clock = deps.clock,
+                          input = deps.input,
+                          sel = 1, speed = 1, quit = false, booted = false }, Menu)
 end
 
-return { new = new }
+function Menu:enter()
+    self.input.setRepeat(300, 90)
+    self.input.clearState()
+    self.screen:repaint()
+    if not self.booted then
+        self.boot_start = self.clock()
+        SFX.start()
+    end
+end
+
+function Menu:exit()
+    self.input.clearState()
+end
+
+function Menu:update()
+    local pad = PAD.read()
+    if not self.booted then return end   -- no input during the power-on curtain
+    local n = #self.games
+    if pad.repeated.left then
+        self.sel = (self.sel - 2) % n + 1
+        SFX.select()
+    elseif pad.repeated.right then
+        self.sel = self.sel % n + 1
+        SFX.select()
+    elseif pad.repeated.up then
+        if self.speed < 9 then self.speed = self.speed + 1 SFX.select() end
+    elseif pad.repeated.down then
+        if self.speed > 1 then self.speed = self.speed - 1 SFX.select() end
+    elseif pad.pressed.esc then
+        self.quit = true
+    elseif pad.pressed.enter then
+        self.runner:start(self.games[self.sel], self.speed)
+        self.scene.switch("play")
+    end
+end
+
+function Menu:draw()
+    local now = self.clock()
+    local grid, panel = self.screen.grid, self.screen.panel
+    local def = self.games[self.sel]
+
+    grid:clear()
+    panel.next:clear()
+    if not self.booted and grid:curtain(now - self.boot_start) then
+        self.booted = true
+        grid:clear()
+    end
+    if self.booted then
+        local num = string.format("%02d", self.sel)
+        grid:text(string.sub(num, 1, 1), 2, 2)
+        grid:text(string.sub(num, 2, 2), 7, 2)
+        local frames = def.demo
+        grid:stamp(frames[(now // DEMO_MS) % #frames + 1], 1, 9)
+    end
+
+    panel:set("label", "BRICK-15")
+    panel:set("score", nil)
+    panel:set("hi_label", def.order == "low" and "BEST" or "HI")
+    panel:set("hi", self.scores:get(def.id))
+    panel:set("speed", self.speed)
+    panel:set("level", nil)
+    panel:set("lives", nil)
+    panel:set("name", def.name)
+    panel:set_status({ "< > GAME", "UP DN SPEED", "ENTER PLAY" })
+    self.screen:present(now)
+end
+
+return Menu
