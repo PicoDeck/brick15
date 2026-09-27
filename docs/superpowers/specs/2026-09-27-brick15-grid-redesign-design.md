@@ -69,6 +69,7 @@ The positions are the same in every game and in the menu. Labels behave like pri
 
 - **Font:** the 3×5 font is only drawn at scale 2 or larger. There is no scale-1 text anywhere.
 - **Glyph fixes:**
+  - `1` = `010,110,010,010,111` (a flag and a foot, so "15" doesn't read as "I5")
   - `M` = `101,111,111,101,101`
   - `N` = `110,101,101,101,101`
   - `W` = `101,101,111,111,101`
@@ -91,6 +92,7 @@ brick15/
   lib/lcd.lua      palette, font (runs), 7-seg with ghost, SFX, PAD (globals LCD, SFX, PAD, as now)
   lib/grid.lua     Grid.new(cols, rows, x, y): cells, diff rendering, blink, patterns
   lib/panel.lua    side panel: fields, dirty tracking, fixed positions
+  lib/screen.lua   owns grid + panel: full repaint on demand or after a stall, flushRegion of changed rows
   lib/scores.lua   high-score cache
   lib/runner.lua   shared play scene: round lifecycle, curtain, records, timing helpers
   lib/menu.lua     brick selector scene
@@ -132,7 +134,7 @@ return {
   hint = { "D-PAD STEER" },       -- status lines shown for the first 3 s of a round
   order = "high",                 -- or "low" (Memory)
   demo = { frame1, frame2 },      -- two 10x12 patterns for the menu
-  new = function(ctx) return game end,   -- ctx = { speed = 1..9 }
+  new = function(ctx) return game end,   -- ctx = { speed = 1..9, now = ms, interval = fn(base_ms, level) }
 }
 
 game:update(pad, now_ms)  -- pad = { held = PAD.held(), pressed = PAD.pressed() }
@@ -140,6 +142,7 @@ game:update(pad, now_ms)  -- pad = { held = PAD.held(), pressed = PAD.pressed() 
 game:draw(grid, next)     -- the runner clears both grids first
 -- fields the runner copies to the panel after every update:
 game.score, game.level, game.lives  -- nil means the field is unused (ghosted)
+game.score_text                     -- optional SCORE display string, e.g. Pong's " 03-05"
 game.status                         -- nil, or a list of up to 3 strings
 ```
 
@@ -165,9 +168,13 @@ This is one scene that hosts whichever game is active, replacing the 15 per-game
 
 `display.flush()` swaps two buffers without copying (`display.c` `display_flush`), so the back buffer holds the frame from two flushes ago. That breaks partial redraws. `display.flushRegion(y0, y1)` sends only those rows and copies the band into the other buffer, so the next partial draw starts from what's on screen.
 
-### Risk to verify
+### The F10 system menu
 
-The system menu overlay (F10) may leave the screen dirty when it closes. If it does, the runner and menu call `invalidate()` when they regain control. This gets checked in the simulator during the pilot.
+The system menu dims the screen and gives the app no signal when it closes, so a diff renderer would leave the dimmed image behind. The app's loop stalls while the menu is open, so `Screen:present` repaints everything when more than 250 ms have passed since the previous frame. The smoke test checks this in the simulator.
+
+### Scene callbacks
+
+`picocalc.game.scene` calls `enter`/`update`/`draw`/`exit` as plain functions (no `self`; `update` gets `dt`). `main.lua` wraps the menu and runner objects in small adapters that call their methods.
 
 ### Alternatives rejected
 
