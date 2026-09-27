@@ -1,0 +1,83 @@
+need("lib/lcd.lua")
+local Grid = need("lib/grid.lua")
+local Panel = need("lib/panel.lua")
+
+local function fresh()
+    local p = Panel.new(Grid)
+    p:render(0)      -- first render paints everything
+    reset_calls()
+    return p
+end
+
+test("panel: first render clears the panel area and draws legends", function()
+    local p = Panel.new(Grid)
+    local y0, y1 = p:render(0)
+    eq(CALLS[1][1], "fillRect", "first call clears")
+    eq(CALLS[1][2], Panel.X, "clear x")
+    eq(y0, 0, "band top"); eq(y1, 319, "band bottom")
+end)
+
+test("panel: nothing changed means nothing drawn", function()
+    local p = fresh()
+    local y0 = p:render(0)
+    eq(#CALLS, 0, "calls"); eq(y0, nil, "band")
+end)
+
+test("panel: setting the same value again is not a change", function()
+    local p = fresh()
+    p:set("score", 120); p:render(0); reset_calls()
+    p:set("score", 120)
+    eq(p:render(0), nil, "band")
+    eq(#CALLS, 0, "calls")
+end)
+
+test("panel: a changed field redraws only its own rows", function()
+    local p = fresh()
+    p:set("score", 120)
+    local y0, y1 = p:render(0)
+    eq(y0, 22, "score top"); eq(y1, 22 + 24 - 1, "score bottom")
+    eq(CALLS[1][6], LCD.BG, "field cleared first")
+    for _, c in ipairs(CALLS) do
+        truthy(c[3] >= 22 and c[3] < 46, "draw stays inside the score rows")
+    end
+end)
+
+test("panel: an unused field (nil) still draws ghost segments", function()
+    local p = fresh()
+    p:set("level", 3); p:render(0); reset_calls()
+    p:set("level", nil); p:render(0)
+    eq(count_calls("fillRect"), 1 + 2 * 7, "clear + 2 ghost digits")
+end)
+
+test("panel: lives light that many of the 4 bricks", function()
+    local p = fresh()
+    p:set("lives", 2)
+    p:render(0)
+    eq(p.lives:get(2, 1), true, "life 2"); eq(p.lives:get(3, 1), false, "life 3")
+    eq(count_calls("fillRect"), 2 * 3, "two bricks lit")
+end)
+
+test("panel: status takes up to three lines", function()
+    local p = fresh()
+    p:set_status({ "GAME OVER", "ENTER AGAIN" })
+    eq(p.values.status1, "GAME OVER", "line 1")
+    eq(p.values.status2, "ENTER AGAIN", "line 2")
+    eq(p.values.status3, "", "line 3 blank")
+    p:set_status(nil)
+    eq(p.values.status1, "", "cleared")
+end)
+
+test("panel: the NEXT grid renders with the panel", function()
+    local p = fresh()
+    p.next:set(1, 1, true)
+    local y0, y1 = p:render(0)
+    eq(y0, 90, "next top"); eq(y1, 104, "next bottom")
+end)
+
+test("panel: invalidate repaints everything", function()
+    local p = fresh()
+    p:invalidate()
+    local y0, y1 = p:render(0)
+    eq(y0, 0, "top"); eq(y1, 319, "bottom")
+    truthy(count_calls("fillRect") > 100, "full repaint")
+end)
