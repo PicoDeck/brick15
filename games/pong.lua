@@ -131,7 +131,7 @@ end
 return {
     id = "pong",
     name = "PONG",
-    hint = { "< > MOVE", "ENTER SERVE", "FIRST TO 7" },
+    hint = { "BOTTOM PAD IS YOU", "< > MOVE", "ENTER SERVE" },
     messages = { "YOU WIN", "CPU WINS" },
     order = "high",
     demo = DEMO,

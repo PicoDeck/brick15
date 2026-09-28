@@ -144,7 +144,8 @@ local function new(ctx)
             local mark = self.board[i]
             local v = blink[i] and "blink" or true
             if mark == "X" then grid:stamp(X_MARK, x, y, v)
-            elseif mark == "O" then grid:stamp(O_MARK, x, y, v) end
+            elseif mark == "O" then grid:stamp(O_MARK, x, y, v)
+            else grid:set(x + 1, y + 1, true) end       -- empty: a centre dot marks the cell
             if i == self.cursor and not self.result_until then
                 if mark == " " then grid:stamp({ "###", "###", "###" }, x, y, "blink")
                 else grid:stamp(mark == "X" and X_MARK or O_MARK, x, y, "blink") end

@@ -94,6 +94,18 @@ test("tictactoe: a CPU win ends the round", function()
     eq(g:update(NONE, 400 + 1200), "over", "over")
 end)
 
+test("tictactoe: each empty cell shows a centre dot, so the board is visible", function()
+    local g = new_game()
+    g.cursor = 1
+    local grid = draw_game(g)
+    for i = 2, 9 do
+        local x = 1 + ((i - 1) % 3) * 3 + 1
+        local y = 6 + ((i - 1) // 3) * 3 + 1
+        eq(grid:get(x, y), true, "centre dot of cell " .. i)
+        eq(grid:get(x - 1, y), false, "only the centre of cell " .. i)
+    end
+end)
+
 test("tictactoe: X and O are drawn as 3x3 marks in their cells", function()
     local g = new_game()
     board(g, "X.......O")

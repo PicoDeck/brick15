@@ -17,6 +17,10 @@ test("pong: meets the game contract", function()
     check_contract(pong, "pong", "PONG")
 end)
 
+test("pong: the hint says which paddle is yours", function()
+    eq(pong.hint[1], "BOTTOM PAD IS YOU", "first hint line")
+end)
+
 test("pong: starts 00-00 with the ball on your paddle", function()
     local g = new_game()
     eq(g.score, 0, "score"); eq(g.score_text, "00-00", "shown score")

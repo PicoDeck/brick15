@@ -7,14 +7,15 @@ local START_X, START_Y = 5, 20
 local HOME_COLS = { 1, 3, 5, 7, 9 }   -- walls stand on the even columns
 
 -- Each lane is a 10-cell loop ('#' = log or car) that shifts one cell every
--- `ms` in `dir`. Cars are 2 long, logs 4-5 long.
+-- `ms` in `dir`. Cars are 2 long, logs 4-5 long; river lanes are at most
+-- half logs so the water between them shows.
 local LANES = {
     [2]  = { kind = "river", pattern = "#####.....", dir = -1, ms = 700 },
-    [3]  = { kind = "river", pattern = "####.####.", dir = 1,  ms = 900 },
+    [3]  = { kind = "river", pattern = "####......", dir = 1,  ms = 900 },
     [4]  = { kind = "river", pattern = "#####.....", dir = -1, ms = 600 },
-    [5]  = { kind = "river", pattern = "####.####.", dir = 1,  ms = 800 },
+    [5]  = { kind = "river", pattern = "####......", dir = 1,  ms = 800 },
     [6]  = { kind = "river", pattern = "#####.....", dir = -1, ms = 750 },
-    [7]  = { kind = "river", pattern = "####.####.", dir = 1,  ms = 650 },
+    [7]  = { kind = "river", pattern = "####......", dir = 1,  ms = 650 },
     [10] = { kind = "road",  pattern = "##....##..", dir = 1,  ms = 500 },
     [11] = { kind = "road",  pattern = "##........", dir = -1, ms = 350 },
     [12] = { kind = "road",  pattern = "##...##...", dir = 1,  ms = 700 },
@@ -30,7 +31,7 @@ local DEMO = {
     {
         "#.#.#.#.#.",
         "#####.....",
-        "..####.###",
+        "..####....",
         "..........",
         "##....##..",
         "....##....",
@@ -44,7 +45,7 @@ local DEMO = {
     {
         "#.#.#.#.#.",
         ".#####....",
-        ".####.###.",
+        ".####.....",
         "..........",
         ".##....##.",
         "...##.....",

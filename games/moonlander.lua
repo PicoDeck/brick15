@@ -45,7 +45,8 @@ local DEMO = {
 }
 
 local function new(ctx)
-    local game = { score = 0, level = 1, lives = 3, landings = 0, fuel = FUEL, heights = {} }
+    local game = { score = 0, level = 1, lives = 3, landings = 0, fuel = FUEL, heights = {},
+                   next_label = "FUEL" }
 
     local function new_ground()
         for c = 1, COLS do game.heights[c] = math.random(2, 6) end

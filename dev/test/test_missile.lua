@@ -98,6 +98,7 @@ end)
 
 test("missile: the NEXT box shows one brick per shot", function()
     local g = new_game()
+    eq(g.next_label, "AMMO", "box labelled AMMO")
     g.ammo = 5
     local _, nextg = draw_game(g)
     eq(count_lit(nextg), 5, "5 shots")

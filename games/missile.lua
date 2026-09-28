@@ -52,7 +52,7 @@ end
 
 local function new(ctx)
     local game = { score = 0, level = 1, ammo = AMMO, cx = 5, cy = 10,
-                   missiles = {}, explosions = {}, cities = {} }
+                   missiles = {}, explosions = {}, cities = {}, next_label = "AMMO" }
     for i, c in ipairs(CITY_COLS) do game.cities[i] = { x = c, alive = true } end
 
     local function start_wave(now)

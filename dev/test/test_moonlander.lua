@@ -94,6 +94,7 @@ end)
 
 test("moonlander: NEXT shows the fuel, one brick per 10 units", function()
     local g = new_game()
+    eq(g.next_label, "FUEL", "box labelled FUEL")
     g.fuel = 95
     local _, nextg = draw_game(g)
     eq(count_lit(nextg), 10, "ceil(95 / 10) bricks")

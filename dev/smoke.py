@@ -41,7 +41,7 @@ PLAY = {
     "breakout": [("press", "enter"), ("hold", "left", 0.3), ("wait", 1.2)],
     "invaders": [("hold", "left", 0.4), ("press", "up"), ("wait", 0.3), ("press", "up"), ("wait", 0.2)],
     "frogger": [("wait", 0.8), ("press", "up"), ("wait", 0.3), ("press", "up"), ("wait", 0.4)],
-    "racer": [("wait", 2.0), ("press", "right"), ("wait", 1.0)],
+    "racer": [("wait", 1.0), ("press", "right"), ("wait", 0.4)],   # before the first car arrives
     "pong": [("press", "enter"), ("wait", 1.2)],
     "copter": [("wait", 1.0), ("press", "left"), ("wait", 0.5)],
     "asteroids": [("press", "right"), ("hold", "up", 0.4), ("press", "enter"), ("wait", 0.1),
@@ -270,6 +270,8 @@ class Smoke:
                 self.shot(f"{gid}-hint")
                 self.run_steps(PLAY.get(gid, [("wait", 1.5)]))
                 self.shot(f"{gid}-gameplay")
+                time.sleep(0.25)                  # half a blink later: shows blinking cells
+                self.shot(f"{gid}-gameplay-b")
                 if not self.finish(gid):
                     self.failures.append(f"{gid}: never reached the game-over screen")
                 else:

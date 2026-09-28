@@ -1,5 +1,5 @@
 -- tank.lua — game 15: destroy the enemy tanks and protect your base.
--- Tanks are 3x3: yours is solid, the enemy's is hollow.
+-- Tanks are 3x3: yours is solid and steady, the enemy's is hollow and blinks.
 -- Game contract: see lib/runner.lua. Needs the SFX global.
 
 local COLS, ROWS = 10, 20
@@ -35,34 +35,34 @@ local ENEMY = {
 }
 local ENEMY_TURNS = { "down", "down", "left", "right", "up" }   -- they drift toward you
 
-local DEMO = {
+local DEMO = {           -- rows 9-20 of the map: you (left) facing an enemy (right)
     {
-        "#.#.......",
-        "#.#.......",
-        ".#........",
-        "......#...",
-        "#...##...#",
-        "#...##...#",
         "..........",
+        "...####...",
+        "...####...",
+        ".#....#.#.",
+        "###...#.#.",
+        "#.#....#..",
+        "...####...",
+        "...####...",
         "..........",
-        "....#.....",
-        ".#........",
-        "###.####..",
-        "#.#.#..#..",
+        "...####...",
+        "...####...",
+        "...####...",
     },
     {
-        "..........",
-        "#.#.......",
-        "#.#.......",
         ".#........",
-        "#...##...#",
-        "#...##...#",
+        "...####...",
+        "...####...",
+        ".#....#.#.",
+        "###...#.#.",
+        "#.#....#..",
+        "...####...",
+        "...####...",
         "..........",
-        "....#.....",
-        "..........",
-        ".#........",
-        "###.####..",
-        "#.#.#..#..",
+        "...####...",
+        "...####...",
+        "...####...",
     },
 }
 
@@ -237,7 +237,8 @@ local function new(ctx)
         if self.base_alive then
             for _, b in ipairs(BASE) do grid:set(b[1], b[2], "blink") end
         end
-        for _, e in ipairs(self.enemies) do grid:stamp(ENEMY[e.dir], e.x, e.y) end
+        -- enemies blink: they're what you aim at, and it sets them apart from walls
+        for _, e in ipairs(self.enemies) do grid:stamp(ENEMY[e.dir], e.x, e.y, "blink") end
         grid:stamp(PLAYER[self.player.dir], self.player.x, self.player.y)
         for _, b in ipairs(self.bullets) do grid:set(b.x, b.y, true) end
     end

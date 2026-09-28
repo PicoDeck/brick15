@@ -99,6 +99,16 @@ test("frogger: losing the last life ends the round", function()
     eq(g:update(press("up"), 1), "over", "over")
 end)
 
+test("frogger: river lanes are at most half logs, so the water shows", function()
+    local g = new_game()
+    for row, lane in pairs(g.lanes) do
+        if lane.kind == "river" then
+            local logs = select(2, lane.pattern:gsub("#", ""))
+            truthy(logs <= 5, "row " .. row .. " has " .. logs .. " log cells of 10")
+        end
+    end
+end)
+
 test("frogger: road cars are 2 long, river logs 4-5 long", function()
     local g = new_game()
     for row, lane in pairs(g.lanes) do

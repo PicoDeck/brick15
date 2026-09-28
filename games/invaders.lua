@@ -2,7 +2,8 @@
 -- Game contract: see lib/runner.lua. Needs the SFX global.
 
 local COLS, ROWS = 10, 20
-local BLOCK_W, BLOCK_H = 6, 3
+local BLOCK_W, BLOCK_H = 4, 3    -- aliens, each with a clear cell around it
+local SPACING = 2
 local GUN_ROW = 19                -- gun is .#. on row 19, ### on row 20
 local MARCH_MS = 600              -- block step at speed 1, level 1, full block
 local BULLET_MS = 40
@@ -13,11 +14,11 @@ local MAX_BOMBS = 3
 local DEMO = {
     {
         "..........",
-        "######....",
-        "######....",
-        "######....",
+        "#.#.#.#...",
         "..........",
+        "#.#.#.#...",
         "..........",
+        "#.#.#.#...",
         "..#.......",
         "..........",
         "..........",
@@ -27,12 +28,12 @@ local DEMO = {
     },
     {
         "..........",
-        ".######...",
-        ".######...",
-        ".######...",
+        ".#.#.#.#..",
         "..........",
+        ".#.#.#.#..",
+        "..........",
+        ".#.#.#.#..",
         "....#.....",
-        "..........",
         "..........",
         "..#.......",
         "....#.....",
@@ -60,7 +61,7 @@ local function new(ctx)
     end
 
     function game:alien_pos(a)
-        return self.ox + a.c - 1, self.oy + a.r - 1
+        return self.ox + (a.c - 1) * SPACING, self.oy + (a.r - 1) * SPACING
     end
 
     local function alive_count()

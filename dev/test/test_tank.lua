@@ -112,11 +112,11 @@ test("tank: an enemy never spawns on top of your tank", function()
     end
 end)
 
-test("tank: your tank is solid, enemy tanks are hollow", function()
+test("tank: your tank is solid and steady, enemy tanks are hollow and blink", function()
     local g = new_game()
     g.enemies = { { x = 4, y = 1, dir = "down" } }
     local grid = draw_game(g)
     eq(grid:get(2, 19), true, "player centre")
     eq(grid:get(5, 2), false, "enemy centre hollow")
-    eq(grid:get(5, 3), true, "enemy barrel down")
+    eq(grid:get(5, 3), "blink", "enemy barrel down, blinking")
 end)

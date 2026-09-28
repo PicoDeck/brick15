@@ -107,6 +107,14 @@ test("asteroids: the ship blinks while it is invulnerable", function()
     eq(grid:get(5, 9), "blink", "nose blinks")
 end)
 
+test("asteroids: big rocks are hollow rings, the ship is solid", function()
+    local g = new_game()
+    g.rocks = { rock(3, 1, 1) }
+    local grid = draw_game(g)
+    eq(grid:get(1, 1), true, "ring"); eq(grid:get(2, 2), false, "hollow middle")
+    eq(grid:get(5, 10), true, "ship centre is solid")
+end)
+
 test("asteroids: draw wraps rock cells across the edges", function()
     local g = new_game()
     g.rocks = { rock(2, 10, 20) }          -- cells (10,20) (1,20) (10,1) (1,1)

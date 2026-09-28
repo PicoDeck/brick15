@@ -17,9 +17,12 @@ test("invaders: meets the game contract", function()
     check_contract(invaders, "invaders", "INVADERS")
 end)
 
-test("invaders: a 6x3 block of aliens, gun at the bottom, 3 lives", function()
+test("invaders: 4x3 aliens with a gap around each, gun at the bottom, 3 lives", function()
     local g = new_game()
-    eq(#g.aliens, 18, "aliens"); eq(alive(g), 18, "all alive")
+    eq(#g.aliens, 12, "aliens"); eq(alive(g), 12, "all alive")
+    local grid = draw_game(g)
+    local x, y = g:alien_pos(g.aliens[1])
+    eq(grid:get(x + 1, y), false, "gap to the right"); eq(grid:get(x, y + 1), false, "gap below")
     eq(g.lives, 3, "lives"); eq(g.gun, 5, "gun centre column")
 end)
 
@@ -28,7 +31,7 @@ test("invaders: the block marches sideways, then drops and turns at the edge", f
     local x0 = g.ox
     g:update(NONE, g.next_march)
     eq(g.ox, x0 + 1, "stepped right")
-    g.ox = 10 - 6 + 1                   -- right edge of the block at column 10
+    g.ox = 10 - 7 + 1                   -- right edge of the 7-wide block at column 10
     local y0 = g.oy
     g:update(NONE, g.next_march)
     eq(g.oy, y0 + 1, "dropped a row"); eq(g.march_dir, -1, "now marching left")
@@ -45,7 +48,7 @@ end)
 
 test("invaders: a bullet kills the alien it reaches and scores", function()
     local g = new_game()
-    local a = g.aliens[13]              -- bottom row, first column
+    local a = g.aliens[9]               -- bottom row, first column
     local ax, ay = g:alien_pos(a)
     g.bullet = { x = ax, y = ay + 1 }
     g.next_bullet = 0
@@ -72,22 +75,22 @@ end)
 
 test("invaders: aliens reaching the gun rows end the round", function()
     local g = new_game()
-    g.oy = 16                           -- bottom alien row at 18 after the drop
+    g.oy = 13                           -- bottom alien row (oy + 4) at 18 after the drop
     g.ox, g.march_dir = 5, 1
     eq(g:update(NONE, g.next_march), "over", "invaded")
 end)
 
 test("invaders: clearing the wave starts the next one a level up", function()
     local g = new_game()
-    for i = 1, 17 do g.aliens[i].alive = false end
-    local a = g.aliens[18]
+    for i = 1, 11 do g.aliens[i].alive = false end
+    local a = g.aliens[12]
     local ax, ay = g:alien_pos(a)
     g.bullet, g.next_bullet = { x = ax, y = ay + 1 }, 0
     g:update(NONE, 0)
-    eq(g.level, 2, "level 2"); eq(alive(g), 18, "new wave")
+    eq(g.level, 2, "level 2"); eq(alive(g), 12, "new wave")
 end)
 
-test("invaders: draw shows 18 aliens and the 4-cell gun", function()
+test("invaders: draw shows 12 aliens and the 4-cell gun", function()
     local g = new_game()
-    eq(count_lit(draw_game(g)), 18 + 4, "lit")
+    eq(count_lit(draw_game(g)), 12 + 4, "lit")
 end)
