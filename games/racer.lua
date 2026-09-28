@@ -1,152 +1,124 @@
--- racer.lua — game 06. Expects globals: LCD, SFX, PAD, disp, picocalc.
+-- racer.lua — game 06: switch lanes to dodge oncoming cars.
+-- Game contract: see lib/runner.lua. Needs the SFX global.
 
-local disp = picocalc.display
-local scene_mgr = picocalc.game.scene
-local save = picocalc.game.save
+local ROWS = 20
+local LANE_COL = { 3, 6 }         -- left column of each lane's 3-wide car
+local PLAYER_ROW = 17             -- the player's car fills rows 17-20
+local STEP_MS = 160               -- road speed at speed 1, level 1
+local SPACING = 7                 -- rows from one car's top to the next's
+local SPAWN_Y = -3                -- new cars start just above the screen
+local CRASH_MS = 800              -- the road stops this long after a crash
+local ROWS_PER_LEVEL = 100
 
-local ROAD_L, ROAD_R = 60, 260
-local CAR_W, CAR_H = 24, 34
-local PLAYER_Y = 250
+local PLAYER = { ".#.", "###", ".#.", "#.#" }
+local ONCOMING = { "#.#", ".#.", "###", ".#." }   -- upside down: facing you
 
-local function new()
-    local scene = {}
-    local px, cars, lives, score, speed, frame, spawn_timer, flash, game_over, scroll
+local DEMO = {
+    {
+        "#...#.#..#",
+        "#....#...#",
+        ".....###..",
+        ".....#....",
+        "#........#",
+        "#........#",
+        "..........",
+        "..........",
+        "#...#....#",
+        "#..###...#",
+        "....#.....",
+        "...#.#....",
+    },
+    {
+        "..........",
+        "#...#.#..#",
+        "#....#...#",
+        ".....###..",
+        "......#...",
+        "#........#",
+        "#........#",
+        "..........",
+        "..........",
+        "#.....#..#",
+        "#....###.#",
+        "......#...",
+    },
+}
 
-    local function save_hi()
-        local hi = (save.get("hi_racer") or {}).v or 0
-        if score > hi then save.set("hi_racer", { v = score }) end
+local function new(ctx)
+    local game = { score = 0, level = 1, lives = 3, lane = 1, distance = 0,
+                   cars = {}, scroll = 0 }
+    game.next_step = ctx.now + ctx.interval(STEP_MS, game.level)
+
+    local function crash(now)
+        game.lives = game.lives - 1
+        SFX.over()
+        game.cars = {}
+        game.crash_until = now + CRASH_MS
+        if game.lives <= 0 then return "over" end
+        return nil
     end
 
-    local function reset()
-        px = 160
-        cars = {}
-        lives = 3
-        score = 0
-        speed = 2
-        frame = 0
-        spawn_timer = 0
-        flash = 0
-        game_over = false
-        scroll = 0
+    local function hits_player(car)
+        return car.lane == game.lane and car.y + 3 >= PLAYER_ROW and car.y <= ROWS
     end
 
-    local function spawn_car()
-        local lane = math.random(3)
-        local x = ROAD_L + 14 + (lane - 1) * 66
-        for _, c in ipairs(cars) do
-            if math.abs(c.x - x) < 40 and c.y < 80 then return end
+    function game:update(pad, now)
+        if pad.pressed.left and self.lane > 1 then self.lane = self.lane - 1 SFX.move() end
+        if pad.pressed.right and self.lane < #LANE_COL then self.lane = self.lane + 1 SFX.move() end
+
+        if self.crash_until and now < self.crash_until then return nil end
+        self.crash_until = nil
+        for _, car in ipairs(self.cars) do
+            if hits_player(car) then return crash(now) end   -- you steered into it
         end
-        cars[#cars + 1] = { x = x, y = -CAR_H, vy = math.random() * 1.5 + 0.5 }
-    end
+        if now < self.next_step then return nil end
+        self.next_step = now + ctx.interval(STEP_MS, self.level)
 
-    function scene:enter()
-        reset()
-    end
+        self.scroll = self.scroll + 1
+        self.distance = self.distance + 1
+        self.score = self.score + 1
+        self.level = self.distance // ROWS_PER_LEVEL + 1
 
-    function scene:update()
-        if game_over then
-            local p = PAD.pressed()
-            if p.enter then
-                SFX.start()
-                reset()
-            elseif p.esc then
-                scene_mgr.switch("menu")
-            end
-            return
-        end
-
-        local p = PAD.pressed()
-        local h = PAD.held()
-        if p.esc then scene_mgr.switch("menu") return end
-
-        if h.left then px = px - 4 end
-        if h.right then px = px + 4 end
-        px = math.max(ROAD_L + CAR_W / 2, math.min(ROAD_R - CAR_W / 2, px))
-
-        frame = frame + 1
-        speed = math.min(6, 2 + frame / 600)
-        scroll = (scroll + speed) % 40
-        score = score + 1
-
-        if flash > 0 then flash = flash - 1 end
-
-        -- spawn traffic
-        spawn_timer = spawn_timer + 1
-        if spawn_timer > math.max(20, 55 - math.floor(speed * 5)) then
-            spawn_timer = 0
-            spawn_car()
-        end
-
-        -- move traffic down relative to player speed
-        for i = #cars, 1, -1 do
-            local c = cars[i]
-            c.y = c.y + speed - c.vy
-            if c.y > 340 then table.remove(cars, i) goto continue end
-            -- collision with player
-            if flash <= 0 and math.abs(c.x - px) < CAR_W and c.y + CAR_H > PLAYER_Y
-               and c.y < PLAYER_Y + CAR_H then
-                table.remove(cars, i)
-                lives = lives - 1
-                SFX.hit()
-                if lives <= 0 then
-                    game_over = true
-                    SFX.over()
-                    save_hi()
-                else
-                    flash = 40
-                end
-            end
-            ::continue::
-        end
-    end
-
-    function scene:draw()
-        LCD.clear()
-        LCD.textCentered("RACER", 6, 1, LCD.MID)
-        LCD.seg(score, 16, 16, 2, 6, LCD.DARK)
-        LCD.text("HI " .. ((save.get("hi_racer") or {}).v or 0), 252, 20, 1, LCD.DARK)
-
-        -- grass + road
-        disp.fillRect(ROAD_L - 8, 36, ROAD_R - ROAD_L + 16, 280, LCD.MID)
-        disp.fillRect(ROAD_L, 36, ROAD_R - ROAD_L, 280, LCD.BG)
-
-        -- lane markings scroll
-        for lane = 1, 2 do
-            local x = ROAD_L + lane * 66 - 2
-            for y = -40 + scroll, 316, 40 do
-                disp.fillRect(x, math.floor(y), 4, 18, LCD.MID)
+        local kept, top = {}, math.huge
+        for _, car in ipairs(self.cars) do
+            car.y = car.y + 1
+            if car.y > ROWS then
+                self.score = self.score + 10         -- passed it
+            else
+                kept[#kept + 1] = car
+                top = math.min(top, car.y)
             end
         end
-
-        -- traffic
-        for _, c in ipairs(cars) do
-            disp.fillRect(c.x - CAR_W / 2, math.floor(c.y), CAR_W, CAR_H, LCD.DARK)
-            disp.fillRect(c.x - CAR_W / 2 + 4, math.floor(c.y) + 5, CAR_W - 8, 8, LCD.BG)
+        self.cars = kept
+        for _, car in ipairs(self.cars) do
+            if hits_player(car) then return crash(now) end
         end
-
-        -- player (blink while invincible)
-        if flash % 6 < 4 then
-            disp.fillRect(px - CAR_W / 2, PLAYER_Y, CAR_W, CAR_H, LCD.DARK)
-            disp.fillRect(px - CAR_W / 2 + 4, PLAYER_Y + 5, CAR_W - 8, 8, LCD.BG)
+        if top - SPAWN_Y >= SPACING then            -- room for a new car above
+            self.cars[#self.cars + 1] = { lane = math.random(#LANE_COL), y = SPAWN_Y }
         end
-
-        for i = 1, lives do disp.fillRect(252 + (i - 1) * 12, 36, 8, 8, LCD.DARK) end
-
-        if game_over then
-            disp.fillRect(40, 120, 240, 80, LCD.DARK)
-            disp.drawRect(40, 120, 240, 80, LCD.BG)
-            LCD.textCentered("GAME OVER", 132, 2, LCD.BG)
-            LCD.textCentered("SCORE " .. score, 152, 1, LCD.BG)
-            LCD.textCentered("ENTER AGAIN", 172, 1, LCD.BG)
-            LCD.textCentered("ESC MENU", 184, 1, LCD.BG)
-        end
-
-        disp.flush()
+        return nil
     end
 
-    function scene:exit() end
+    function game:draw(grid)
+        for r = 1, ROWS do
+            if (r + self.scroll) % 4 < 2 then
+                grid:set(1, r, true)
+                grid:set(10, r, true)
+            end
+        end
+        for _, car in ipairs(self.cars) do grid:stamp(ONCOMING, LANE_COL[car.lane], car.y) end
+        local v = self.crash_until and "blink" or true
+        if LANE_COL[self.lane] then grid:stamp(PLAYER, LANE_COL[self.lane], PLAYER_ROW, v) end
+    end
 
-    return scene
+    return game
 end
 
-return { new = new }
+return {
+    id = "racer",
+    name = "RACER",
+    hint = { "< > CHANGE LANE" },
+    order = "high",
+    demo = DEMO,
+    new = new,
+}
