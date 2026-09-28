@@ -40,7 +40,7 @@ local Menu = load_module("lib/menu")
 local GAME_IDS = {
     "tetris", "snake", "breakout", "invaders", "frogger",
     "racer", "pong", "copter", "asteroids", "memory",
-    "simon",
+    "simon", "tictactoe",
 }
 
 local games = {}

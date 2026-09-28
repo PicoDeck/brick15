@@ -1,185 +1,168 @@
--- tictactoe.lua — game 12. Expects globals: LCD, SFX, PAD, disp, picocalc.
+-- tictactoe.lua — game 12: X against the CPU's O. Wins build a streak;
+-- a loss ends the round. The board is 3x3 cells of 3x3 bricks.
+-- Game contract: see lib/runner.lua. Needs the SFX global.
 
-local disp = picocalc.display
-local scene_mgr = picocalc.game.scene
+local BOARD_X, BOARD_Y = 1, 6     -- top-left brick of cell 1
+local CPU_MS = 400                -- the CPU "thinks" this long
+local RESULT_MS = 1200            -- a finished board shows this long
+local X_MARK = { "#.#", ".#.", "#.#" }
+local O_MARK = { "###", "#.#", "###" }
+local LINES = {
+    { 1, 2, 3 }, { 4, 5, 6 }, { 7, 8, 9 },
+    { 1, 4, 7 }, { 2, 5, 8 }, { 3, 6, 9 },
+    { 1, 5, 9 }, { 3, 5, 7 },
+}
 
-local N = 3
-local CELL = 70
-local OX, OY = 55, 70
+local DEMO = {
+    {
+        "..........",
+        "..........",
+        "#.####.#..",
+        ".##.#..#..",
+        "#.####.#..",
+        "..........",
+        "..........",
+        "...#.#....",
+        "....#.....",
+        "...#.#....",
+        "..........",
+        "..........",
+    },
+    {
+        "..........",
+        "..........",
+        "#.####.#..",
+        ".##.#..#..",
+        "#.####.#..",
+        "...###....",
+        "...#.#....",
+        "...####.#.",
+        "....#..#..",
+        "...#.##.#.",
+        "..........",
+        "..........",
+    },
+}
 
-local function new()
-    local scene = {}
-    local board, cursor, turn, result, tally
-    -- turn: "player" | "ai"; result: nil | "X" | "O" | "draw"
-
-    local function reset()
-        board = {}
-        for i = 1, 9 do board[i] = " " end
-        cursor = 5
-        turn = "player"
-        result = nil
+local function winner(board)
+    for _, l in ipairs(LINES) do
+        local a = board[l[1]]
+        if a ~= " " and a == board[l[2]] and a == board[l[3]] then return a, l end
     end
-
-    local function check_win(b, mark)
-        local lines = {
-            { 1, 2, 3 }, { 4, 5, 6 }, { 7, 8, 9 },
-            { 1, 4, 7 }, { 2, 5, 8 }, { 3, 6, 9 },
-            { 1, 5, 9 }, { 3, 5, 7 },
-        }
-        for _, line in ipairs(lines) do
-            if b[line[1]] == mark and b[line[2]] == mark and b[line[3]] == mark then
-                return line
-            end
-        end
-        return nil
-    end
-
-    local function ai_move()
-        -- 1. win, 2. block, 3. center, 4. corner, 5. random
-        local choice = nil
-        for _, mark in ipairs({ "O", "X" }) do
-            for i = 1, 9 do
-                if board[i] == " " then
-                    board[i] = mark
-                    if check_win(board, mark) then choice = i end
-                    board[i] = " "
-                    if choice then break end
-                end
-            end
-            if choice then break end
-        end
-        if not choice and board[5] == " " then choice = 5 end
-        if not choice then
-            local corners = {}
-            for _, i in ipairs({ 1, 3, 7, 9 }) do
-                if board[i] == " " then corners[#corners + 1] = i end
-            end
-            if #corners > 0 then choice = corners[math.random(#corners)] end
-        end
-        if not choice then
-            local open = {}
-            for i = 1, 9 do
-                if board[i] == " " then open[#open + 1] = i end
-            end
-            choice = open[math.random(#open)]
-        end
-        board[choice] = "O"
-    end
-
-    local function end_if_done()
-        local line = check_win(board, "X")
-        if line then
-            result = "X"
-            tally.x = tally.x + 1
-            SFX.levelup()
-            return line
-        end
-        line = check_win(board, "O")
-        if line then
-            result = "O"
-            tally.o = tally.o + 1
-            SFX.over()
-            return line
-        end
-        local full = true
-        for i = 1, 9 do
-            if board[i] == " " then full = false break end
-        end
-        if full then
-            result = "draw"
-            tally.d = tally.d + 1
-            SFX.hit()
-        end
-        return nil
-    end
-
-    function scene:enter()
-        tally = { x = 0, o = 0, d = 0 }
-        reset()
-    end
-
-    function scene:update()
-        local p = PAD.pressed()
-        if p.esc then scene_mgr.switch("menu") return end
-
-        if result then
-            if p.enter then
-                SFX.start()
-                reset()
-            end
-            return
-        end
-
-        if turn == "player" then
-            local c = (cursor - 1) % 3 + 1
-            local r = math.floor((cursor - 1) / 3) + 1
-            if p.left and c > 1 then cursor = cursor - 1 SFX.move() end
-            if p.right and c < 3 then cursor = cursor + 1 SFX.move() end
-            if p.up and r > 1 then cursor = cursor - 3 SFX.move() end
-            if p.down and r < 3 then cursor = cursor + 3 SFX.move() end
-            if (p.enter or p.f1) and board[cursor] == " " then
-                board[cursor] = "X"
-                SFX.rotate()
-                if not end_if_done() then
-                    turn = "ai"
-                end
-            end
-        else
-            ai_move()
-            if not end_if_done() then
-                turn = "player"
-            else
-                SFX.drop()
-            end
-        end
-    end
-
-    function scene:draw()
-        LCD.clear()
-        LCD.textCentered("TIC-TAC-TOE", 6, 1, LCD.MID)
-
-        -- series tally
-        LCD.text("W " .. tally.x, 16, 16, 1, LCD.DARK)
-        LCD.text("L " .. tally.o, 16, 28, 1, LCD.DARK)
-        LCD.text("D " .. tally.d, 16, 40, 1, LCD.DARK)
-
-        -- board
-        for i = 1, 9 do
-            local c = (i - 1) % 3 + 1
-            local r = math.floor((i - 1) / 3) + 1
-            local x, y = OX + (c - 1) * CELL, OY + (r - 1) * CELL
-            disp.drawRect(x + 4, y + 4, CELL - 8, CELL - 8, LCD.DARK)
-            local mark = board[i]
-            if mark ~= " " then
-                LCD.textCenteredAt(mark, x + CELL / 2, y + CELL / 2 - 5, 2, LCD.DARK)
-            end
-            if i == cursor and not result and turn == "player" then
-                disp.drawRect(x + 1, y + 1, CELL - 2, CELL - 2, LCD.MID)
-            end
-        end
-
-        if result then
-            disp.fillRect(40, 120, 240, 80, LCD.DARK)
-            disp.drawRect(40, 120, 240, 80, LCD.BG)
-            if result == "X" then
-                LCD.textCentered("YOU WIN", 132, 2, LCD.BG)
-            elseif result == "O" then
-                LCD.textCentered("AI WINS", 132, 2, LCD.BG)
-            else
-                LCD.textCentered("DRAW", 132, 2, LCD.BG)
-            end
-            LCD.textCentered("ENTER AGAIN", 172, 1, LCD.BG)
-            LCD.textCentered("ESC MENU", 184, 1, LCD.BG)
-        else
-            LCD.textCentered(turn == "player" and "YOUR MOVE" or "AI THINKING", 290, 1, LCD.MID)
-        end
-
-        disp.flush()
-    end
-
-    function scene:exit() end
-
-    return scene
+    return nil
 end
 
-return { new = new }
+local function full(board)
+    for i = 1, 9 do if board[i] == " " then return false end end
+    return true
+end
+
+-- The CPU's move: win, block, centre, a corner, a side; with chance
+-- `mistake` it plays a random free cell instead.
+local function cpu_move(board, mistake)
+    local free = {}
+    for i = 1, 9 do if board[i] == " " then free[#free + 1] = i end end
+    if math.random() < mistake then return free[math.random(#free)] end
+    for _, mark in ipairs({ "O", "X" }) do
+        for _, i in ipairs(free) do
+            board[i] = mark
+            local w = winner(board)
+            board[i] = " "
+            if w then return i end
+        end
+    end
+    for _, i in ipairs({ 5, 1, 3, 7, 9, 2, 4, 6, 8 }) do
+        if board[i] == " " then return i end
+    end
+end
+
+local function new(ctx)
+    local game = { score = 0, cursor = 5, board = {} }
+    game.mistake = math.max(0, 0.35 - 0.04 * (ctx.speed - 1))
+
+    local function clear_board()
+        for i = 1, 9 do game.board[i] = " " end
+        game.win_line, game.status, game.result_until, game.cpu_at = nil, nil, nil, nil
+    end
+
+    -- After a move: a finished board shows its result for a moment.
+    local function settle(now)
+        local w, line = winner(game.board)
+        if w == "X" then
+            game.score = game.score + 1
+            game.status, game.win_line = { "YOU WIN" }, line
+            SFX.score()
+        elseif w == "O" then
+            game.status, game.win_line = { "CPU WINS" }, line
+            game.lost = true
+            SFX.over()
+        elseif full(game.board) then
+            game.status = { "DRAW" }
+            SFX.select()
+        else
+            return false
+        end
+        game.result_until = now + RESULT_MS
+        return true
+    end
+
+    function game:update(pad, now)
+        if self.result_until then
+            if now < self.result_until then return nil end
+            if self.lost then return "over" end
+            clear_board()
+            return nil
+        end
+        if self.cpu_at then
+            if now < self.cpu_at then return nil end
+            self.cpu_at = nil
+            self.board[cpu_move(self.board, self.mistake)] = "O"
+            SFX.move()
+            settle(now)
+            return nil
+        end
+
+        local r, c = (self.cursor - 1) // 3, (self.cursor - 1) % 3
+        if pad.repeated.up and r > 0 then self.cursor = self.cursor - 3 end
+        if pad.repeated.down and r < 2 then self.cursor = self.cursor + 3 end
+        if pad.repeated.left and c > 0 then self.cursor = self.cursor - 1 end
+        if pad.repeated.right and c < 2 then self.cursor = self.cursor + 1 end
+        if (pad.pressed.enter or pad.pressed.f1) and self.board[self.cursor] == " " then
+            self.board[self.cursor] = "X"
+            SFX.select()
+            if not settle(now) then self.cpu_at = now + CPU_MS end
+        end
+        return nil
+    end
+
+    function game:draw(grid)
+        local blink = {}
+        for _, i in ipairs(self.win_line or {}) do blink[i] = true end
+        for i = 1, 9 do
+            local x = BOARD_X + ((i - 1) % 3) * 3
+            local y = BOARD_Y + ((i - 1) // 3) * 3
+            local mark = self.board[i]
+            local v = blink[i] and "blink" or true
+            if mark == "X" then grid:stamp(X_MARK, x, y, v)
+            elseif mark == "O" then grid:stamp(O_MARK, x, y, v) end
+            if i == self.cursor and not self.result_until then
+                if mark == " " then grid:stamp({ "###", "###", "###" }, x, y, "blink")
+                else grid:stamp(mark == "X" and X_MARK or O_MARK, x, y, "blink") end
+            end
+        end
+    end
+
+    clear_board()
+    return game
+end
+
+return {
+    id = "tictactoe",
+    name = "TIC-TAC-TOE",
+    hint = { "D-PAD MOVE", "ENTER PLACE X" },
+    messages = { "YOU WIN", "DRAW", "CPU WINS" },
+    order = "high",
+    demo = DEMO,
+    new = new,
+    cpu_move = cpu_move,
+}
