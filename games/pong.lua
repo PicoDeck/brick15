@@ -1,168 +1,139 @@
--- pong.lua — game 07. Expects globals: LCD, SFX, PAD, disp, picocalc.
+-- pong.lua — game 07: vertical Pong against the CPU, first to 7.
+-- Your paddle is on row 20, the CPU's on row 1.
+-- Game contract: see lib/runner.lua. Needs the SFX global.
 
-local disp = picocalc.display
-local scene_mgr = picocalc.game.scene
-local save = picocalc.game.save
+local COLS, ROWS = 10, 20
+local PADDLE_W = 3
+local WIN_POINTS = 7
+local STEP_MS = 120               -- ball speed at speed 1
+local AI_MS = 170                 -- CPU paddle speed at speed 1
 
-local PADDLE_W, PADDLE_H = 6, 40
-local PLAYER_X, AI_X = 16, 298
-local BALL = 6
-local WIN_SCORE = 7
+local DEMO = {
+    {
+        "...###....",
+        "..........",
+        "..........",
+        ".....#....",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "....###...",
+    },
+    {
+        "....###...",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..#.......",
+        "..........",
+        "..........",
+        "..........",
+        "...###....",
+    },
+}
 
-local function new()
-    local scene = {}
-    local py, ay, ball, ball_v, pscore, aiseore, state, winner
-    -- state: "serve" | "play" | "over"
+local function new(ctx)
+    -- score = your points (the record); score_text shows "you-cpu"
+    local game = { score = 0, cpu_points = 0, player = 4, cpu = 4 }
+    game.next_ai = ctx.now + ctx.interval(AI_MS, 1)
 
-    local function save_hi()
-        local hi = (save.get("hi_pong") or {}).v or 0
-        if pscore > hi then save.set("hi_pong", { v = pscore }) end
+    local function refresh()
+        game.score_text = string.format("%02d-%02d", game.score, game.cpu_points)
     end
 
-    local function serve()
-        ball = { x = 157, y = 160 }
-        local angle = math.random() * 0.9 - 0.45
-        local dir = math.random(2) == 1 and 1 or -1
-        ball_v = { x = math.cos(angle) * 2.2 * dir, y = math.sin(angle) * 2.2 }
-        state = "serve"
+    local function serve_position()
+        game.serving = true
+        game.ball = { x = game.player + 1, y = ROWS - 1, dx = 1, dy = -1 }
     end
 
-    local function reset()
-        py = 140
-        ay = 140
-        pscore = 0
-        aiseore = 0
-        winner = nil
-        serve()
+    local function covers(left, x) return x >= left and x <= left + PADDLE_W - 1 end
+
+    -- Bounce off a paddle whose left cell is `left`, landing at column nx.
+    local function paddle_bounce(b, left, nx)
+        b.dy = -b.dy
+        if nx == left then b.dx = -1 elseif nx == left + PADDLE_W - 1 then b.dx = 1 end
+        SFX.rotate()
     end
 
-    function scene:enter()
-        reset()
+    local function point(for_player)
+        if for_player then game.score = game.score + 1 SFX.score()
+        else game.cpu_points = game.cpu_points + 1 SFX.hit() end
+        refresh()
+        if game.score >= WIN_POINTS then game.status = { "YOU WIN" } return "over" end
+        if game.cpu_points >= WIN_POINTS then game.status = { "CPU WINS" } return "over" end
+        serve_position()
+        return nil
     end
 
-    function scene:update()
-        if state == "over" then
-            local p = PAD.pressed()
-            if p.enter then
-                SFX.start()
-                reset()
-            elseif p.esc then
-                scene_mgr.switch("menu")
+    local function step_ball()
+        local b = game.ball
+        if b.x + b.dx < 1 or b.x + b.dx > COLS then b.dx = -b.dx end
+        local nx = b.x + b.dx
+        if b.dy == 1 and b.y + 1 == ROWS then
+            if covers(game.player, nx) then paddle_bounce(b, game.player, nx) return nil end
+            return point(false)
+        end
+        if b.dy == -1 and b.y - 1 == 1 then
+            if covers(game.cpu, nx) then paddle_bounce(b, game.cpu, nx) return nil end
+            return point(true)
+        end
+        b.x, b.y = nx, b.y + b.dy
+        return nil
+    end
+
+    function game:update(pad, now)
+        if pad.repeated.left and self.player > 1 then self.player = self.player - 1 end
+        if pad.repeated.right and self.player < COLS - PADDLE_W + 1 then self.player = self.player + 1 end
+
+        -- CPU: chase a ball heading its way, otherwise drift back to the middle
+        if now >= self.next_ai then
+            self.next_ai = now + ctx.interval(AI_MS, 1)
+            local target = (self.ball.dy == -1 and not self.serving) and self.ball.x or 5
+            local centre = self.cpu + 1
+            if target < centre and self.cpu > 1 then self.cpu = self.cpu - 1
+            elseif target > centre and self.cpu < COLS - PADDLE_W + 1 then self.cpu = self.cpu + 1 end
+        end
+
+        if self.serving then
+            self.ball.x = self.player + 1
+            if pad.pressed.enter or pad.pressed.up or pad.pressed.f1 then
+                self.serving = false
+                self.ball.dx = math.random(2) == 1 and -1 or 1
+                self.next_step = now + ctx.interval(STEP_MS, 1)
             end
-            return
+            return nil
         end
-
-        local p = PAD.pressed()
-        local h = PAD.held()
-        if p.esc then scene_mgr.switch("menu") return end
-
-        -- player paddle
-        if h.up then py = py - 4 end
-        if h.down then py = py + 4 end
-        py = math.max(40, math.min(272, py))
-
-        -- AI paddle tracks the ball
-        local target = ball.y - PADDLE_H / 2
-        if target < ay - 2 then ay = ay - 2.6 end
-        if target > ay + 2 then ay = ay + 2.6 end
-        ay = math.max(40, math.min(272, ay))
-
-        if state == "serve" then
-            if p.enter or p.up then
-                SFX.rotate()
-                state = "play"
-            end
-            return
-        end
-
-        ball.x = ball.x + ball_v.x
-        ball.y = ball.y + ball_v.y
-
-        if ball.y < 40 then ball.y = 40 ball_v.y = -ball_v.y SFX.move() end
-        if ball.y > 314 then ball.y = 314 ball_v.y = -ball_v.y SFX.move() end
-
-        -- paddle bounces
-        if ball_v.x < 0 and ball.x <= PLAYER_X + PADDLE_W and ball.x >= PLAYER_X - BALL
-           and ball.y + BALL >= py and ball.y <= py + PADDLE_H then
-            local hit = (ball.y + BALL / 2 - py) / PADDLE_H
-            local angle = (hit - 0.5) * 1.6
-            local speed = math.min(5.5, math.sqrt(ball_v.x ^ 2 + ball_v.y ^ 2) + 0.15)
-            ball_v.x = math.cos(angle) * speed
-            ball_v.y = math.sin(angle) * speed
-            ball.x = PLAYER_X + PADDLE_W + 1
-            SFX.rotate()
-        end
-        if ball_v.x > 0 and ball.x + BALL >= AI_X and ball.x <= AI_X + PADDLE_W + BALL
-           and ball.y + BALL >= ay and ball.y <= ay + PADDLE_H then
-            local hit = (ball.y + BALL / 2 - ay) / PADDLE_H
-            local angle = (hit - 0.5) * 1.6
-            local speed = math.min(5.5, math.sqrt(ball_v.x ^ 2 + ball_v.y ^ 2) + 0.15)
-            ball_v.x = -math.cos(angle) * speed
-            ball_v.y = math.sin(angle) * speed
-            ball.x = AI_X - BALL - 1
-            SFX.rotate()
-        end
-
-        -- scoring
-        if ball.x < 0 then
-            aiseore = aiseore + 1
-            SFX.hit()
-            if aiseore >= WIN_SCORE then
-                winner = "AI"
-                state = "over"
-                SFX.over()
-                save_hi()
-            else
-                serve()
-            end
-        elseif ball.x > 320 then
-            pscore = pscore + 1
-            SFX.score()
-            if pscore >= WIN_SCORE then
-                winner = "YOU"
-                state = "over"
-                SFX.levelup()
-                save_hi()
-            else
-                serve()
-            end
-        end
+        if now < self.next_step then return nil end
+        self.next_step = now + ctx.interval(STEP_MS, 1)
+        return step_ball()
     end
 
-    function scene:draw()
-        LCD.clear()
-        LCD.textCentered("PONG", 6, 1, LCD.MID)
-
-        -- scores
-        LCD.seg(pscore, 120, 14, 3, 1, LCD.DARK)
-        LCD.seg(aiseore, 184, 14, 3, 1, LCD.DARK)
-
-        -- center net
-        for y = 38, 316, 16 do
-            disp.fillRect(158, y, 4, 8, LCD.MID)
+    function game:draw(grid)
+        for i = 0, PADDLE_W - 1 do
+            grid:set(self.player + i, ROWS, true)
+            grid:set(self.cpu + i, 1, true)
         end
-
-        disp.fillRect(PLAYER_X, math.floor(py), PADDLE_W, PADDLE_H, LCD.DARK)
-        disp.fillRect(AI_X, math.floor(ay), PADDLE_W, PADDLE_H, LCD.DARK)
-        disp.fillRect(math.floor(ball.x), math.floor(ball.y), BALL, BALL, LCD.DARK)
-
-        if state == "serve" then
-            LCD.textCentered("ENTER SERVE", 200, 1, LCD.MID)
-        elseif state == "over" then
-            disp.fillRect(40, 120, 240, 80, LCD.DARK)
-            disp.drawRect(40, 120, 240, 80, LCD.BG)
-            LCD.textCentered(winner .. " WIN", 132, 2, LCD.BG)
-            LCD.textCentered("YOU " .. pscore .. "  AI " .. aiseore, 152, 1, LCD.BG)
-            LCD.textCentered("ENTER AGAIN", 172, 1, LCD.BG)
-            LCD.textCentered("ESC MENU", 184, 1, LCD.BG)
-        end
-
-        disp.flush()
+        grid:set(self.ball.x, self.ball.y, true)
     end
 
-    function scene:exit() end
-
-    return scene
+    refresh()
+    serve_position()
+    return game
 end
 
-return { new = new }
+return {
+    id = "pong",
+    name = "PONG",
+    hint = { "< > MOVE", "ENTER SERVE", "FIRST TO 7" },
+    messages = { "YOU WIN", "CPU WINS" },
+    order = "high",
+    demo = DEMO,
+    new = new,
+}
