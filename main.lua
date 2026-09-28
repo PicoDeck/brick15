@@ -38,7 +38,7 @@ local Menu = load_module("lib/menu")
 -- ── Games, in menu order; a game that fails to load is left out ─────────────
 
 local GAME_IDS = {
-    "tetris", "snake",
+    "tetris", "snake", "breakout",
 }
 
 local games = {}
