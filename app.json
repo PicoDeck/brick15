@@ -1,11 +1,11 @@
 {
-  "id": "net.picodeck.brick30",
-  "name": "BRICK-30",
-  "description": "15 classic LCD brick games in one cart: Tetris, Snake, Breakout, Space Invaders, Frogger, Racer, Pong, Copter, Asteroids, Memory, Simon, Tic-Tac-Toe, Moon Lander, Missile Command and Tank.",
+  "id": "net.picodeck.brick15",
+  "name": "BRICK-15",
+  "description": "15 classic LCD brick games on one 10x20 brick grid: Tetris, Snake, Breakout, Invaders, Frogger, Racer, Pong, Copter, Asteroids, Memory, Simon, Tic-Tac-Toe, Moon Lander, Missile Command and Tank.",
   "version": "1.0.0",
   "author": "PicoDeck",
   "category": "games",
   "min_firmware": "0.1.0",
   "requirements": ["audio"],
-  "homepage": "https://github.com/PicoDeck/brick30"
+  "homepage": "https://github.com/PicoDeck/brick15"
 }
