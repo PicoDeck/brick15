@@ -1,198 +1,167 @@
--- frogger.lua — game 05. Expects globals: LCD, SFX, PAD, disp, picocalc.
+-- frogger.lua — game 05: cross the road, ride the logs, fill the 5 homes.
+-- Rows: 1 homes, 2-7 river, 8-9 bank, 10-18 road, 19-20 start.
+-- Game contract: see lib/runner.lua. Needs the SFX global.
 
-local disp = picocalc.display
-local scene_mgr = picocalc.game.scene
-local save = picocalc.game.save
+local COLS, ROWS = 10, 20
+local START_X, START_Y = 5, 20
+local HOME_COLS = { 1, 3, 5, 7, 9 }   -- walls stand on the even columns
 
-local FROG = 16
-local START_Y = 268
-local GOAL_Y = 44
-local ROW_H = 28
-
--- river lanes (logs) then road lanes (cars): dir, speed, y, vehicles {x, w}
+-- Each lane is a 10-cell loop ('#' = log or car) that shifts one cell every
+-- `ms` in `dir`. Cars are 2 long, logs 4-5 long.
 local LANES = {
-    { dir =  1, speed = 0.8, y = 76,  w = 72, objs = { { x = 0, }, { x = 130 }, { x = 260 } } },
-    { dir = -1, speed = 1.2, y = 104, w = 56, objs = { { x = 60 }, { x = 230 } } },
-    { dir =  1, speed = 1.6, y = 132, w = 90, objs = { { x = 20 }, { x = 210 } } },
-    { dir = -1, speed = 1.0, y = 180, w = 30, objs = { { x = 30 }, { x = 170 }, { x = 300 } } },
-    { dir =  1, speed = 1.4, y = 208, w = 30, objs = { { x = 100 }, { x = 250 } } },
-    { dir = -1, speed = 1.8, y = 236, w = 30, objs = { { x = 0 }, { x = 140 }, { x = 280 } } },
+    [2]  = { kind = "river", pattern = "#####.....", dir = -1, ms = 700 },
+    [3]  = { kind = "river", pattern = "####.####.", dir = 1,  ms = 900 },
+    [4]  = { kind = "river", pattern = "#####.....", dir = -1, ms = 600 },
+    [5]  = { kind = "river", pattern = "####.####.", dir = 1,  ms = 800 },
+    [6]  = { kind = "river", pattern = "#####.....", dir = -1, ms = 750 },
+    [7]  = { kind = "river", pattern = "####.####.", dir = 1,  ms = 650 },
+    [10] = { kind = "road",  pattern = "##....##..", dir = 1,  ms = 500 },
+    [11] = { kind = "road",  pattern = "##........", dir = -1, ms = 350 },
+    [12] = { kind = "road",  pattern = "##...##...", dir = 1,  ms = 700 },
+    [13] = { kind = "road",  pattern = "##........", dir = -1, ms = 450 },
+    [14] = { kind = "road",  pattern = "##....##..", dir = 1,  ms = 600 },
+    [15] = { kind = "road",  pattern = "##...##...", dir = -1, ms = 800 },
+    [16] = { kind = "road",  pattern = "##........", dir = 1,  ms = 400 },
+    [17] = { kind = "road",  pattern = "##....##..", dir = -1, ms = 550 },
+    [18] = { kind = "road",  pattern = "##........", dir = 1,  ms = 650 },
 }
-local RIVER_TOP, RIVER_BOT = 76, 132
-local ROAD_TOP, ROAD_BOT = 180, 236
 
-local function new()
-    local scene = {}
-    local fx, fy, lives, score, best_row, flash, game_over, won_row
+local DEMO = {
+    {
+        "#.#.#.#.#.",
+        "#####.....",
+        "..####.###",
+        "..........",
+        "##....##..",
+        "....##....",
+        "##...##...",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "....#.....",
+    },
+    {
+        "#.#.#.#.#.",
+        ".#####....",
+        ".####.###.",
+        "..........",
+        ".##....##.",
+        "...##.....",
+        ".##...##..",
+        "..........",
+        "..........",
+        "..........",
+        "....#.....",
+        "..........",
+    },
+}
 
-    local function save_hi()
-        local hi = (save.get("hi_frogger") or {}).v or 0
-        if score > hi then save.set("hi_frogger", { v = score }) end
+local function occupied(lane, c)
+    local i = (c - 1 - lane.offset) % COLS + 1
+    return string.sub(lane.pattern, i, i) == "#"
+end
+
+local function new(ctx)
+    local game = { score = 0, level = 1, lives = 3, homes = {}, lanes = {} }
+    for _, c in ipairs(HOME_COLS) do game.homes[c] = false end
+    for row, def in pairs(LANES) do
+        game.lanes[row] = { kind = def.kind, pattern = def.pattern, dir = def.dir, ms = def.ms,
+                            offset = math.random(0, COLS - 1),
+                            next_shift = ctx.now + ctx.interval(def.ms, 1) }
     end
 
-    local function reset()
-        fx, fy = 160, START_Y
-        lives = 3
-        score = 0
-        best_row = START_Y
-        flash = 0
-        game_over = false
-        for _, lane in ipairs(LANES) do
-            for i, o in ipairs(lane.objs) do
-                o.x = (i - 1) * (320 / #lane.objs) + lane.dir * 20
-            end
-        end
+    local function reset_frog()
+        game.fx, game.fy = START_X, START_Y
+        game.best = START_Y           -- furthest row reached by this frog
+    end
+
+    local function hazard()
+        local lane = game.lanes[game.fy]
+        if not lane then return false end
+        if lane.kind == "road" then return occupied(lane, game.fx) end
+        return not occupied(lane, game.fx)          -- river: must be on a log
     end
 
     local function die()
-        lives = lives - 1
-        SFX.hit()
-        if lives <= 0 then
-            game_over = true
-            SFX.over()
-            save_hi()
-        else
-            flash = 30
-            fx, fy = 160, START_Y
-        end
+        game.lives = game.lives - 1
+        SFX.over()
+        if game.lives <= 0 then return "over" end
+        reset_frog()
+        return nil
     end
 
-    function scene:enter()
-        reset()
-    end
-
-    function scene:update()
-        if game_over then
-            local p = PAD.pressed()
-            if p.enter then
-                SFX.start()
-                reset()
-            elseif p.esc then
-                scene_mgr.switch("menu")
-            end
-            return
-        end
-
-        local p = PAD.pressed()
-        if p.esc then scene_mgr.switch("menu") return end
-
-        -- move vehicles
-        for _, lane in ipairs(LANES) do
-            for _, o in ipairs(lane.objs) do
-                o.x = o.x + lane.dir * lane.speed
-                if lane.dir > 0 and o.x > 320 then o.x = -lane.w end
-                if lane.dir < 0 and o.x < -lane.w then o.x = 320 end
-            end
-        end
-
-        if flash > 0 then
-            flash = flash - 1
-            return
-        end
-
-        -- frog hop
-        if p.up then fy = fy - ROW_H SFX.move() end
-        if p.down then fy = fy + ROW_H SFX.move() end
-        if p.left then fx = fx - ROW_H SFX.move() end
-        if p.right then fx = fx + ROW_H SFX.move() end
-        fx = math.max(8, math.min(304, fx))
-        fy = math.max(GOAL_Y, math.min(START_Y, fy))
-
-        -- progress score
-        if fy < best_row then
-            score = score + math.floor((best_row - fy) / ROW_H) * 10
-            best_row = fy
-        end
-
-        -- reached the goal
-        if fy <= GOAL_Y then
-            score = score + 50
+    local function reach_home(c)
+        if game.homes[c] ~= false then return die() end   -- wall or filled home
+        game.homes[c] = true
+        game.score = game.score + 50 * game.level
+        SFX.score()
+        local all = true
+        for _, filled in pairs(game.homes) do all = all and filled end
+        if all then
+            game.level = game.level + 1
+            game.score = game.score + 100
+            for _, h in ipairs(HOME_COLS) do game.homes[h] = false end
             SFX.levelup()
-            fx, fy = 160, START_Y
-            best_row = START_Y
-            -- speed the world up a little
-            for _, lane in ipairs(LANES) do lane.speed = lane.speed + 0.05 end
-            return
         end
-
-        local in_river = fy >= RIVER_TOP - ROW_H / 2 and fy <= RIVER_BOT + ROW_H / 2
-        local on_road = fy >= ROAD_TOP - ROW_H / 2 and fy <= ROAD_BOT + ROW_H / 2
-
-        if in_river then
-            local riding = false
-            for li = 1, 3 do
-                local lane = LANES[li]
-                if math.abs(fy - lane.y) < ROW_H / 2 then
-                    for _, o in ipairs(lane.objs) do
-                        if fx + FROG / 2 >= o.x and fx + FROG / 2 <= o.x + lane.w then
-                            riding = true
-                            fx = fx + lane.dir * lane.speed
-                        end
-                    end
-                end
-            end
-            if fx < 4 or fx > 316 then riding = false end
-            if not riding then die() return end
-        elseif on_road then
-            for li = 4, 6 do
-                local lane = LANES[li]
-                if math.abs(fy - lane.y) < ROW_H / 2 then
-                    for _, o in ipairs(lane.objs) do
-                        if fx + FROG > o.x and fx < o.x + lane.w then
-                            die()
-                            return
-                        end
-                    end
-                end
-            end
-        end
+        reset_frog()
+        return nil
     end
 
-    function scene:draw()
-        LCD.clear()
-        LCD.textCentered("FROGGER", 6, 1, LCD.MID)
-        LCD.seg(score, 16, 16, 2, 6, LCD.DARK)
-        LCD.text("HI " .. ((save.get("hi_frogger") or {}).v or 0), 252, 20, 1, LCD.DARK)
+    local HOPS = { { "up", 0, -1 }, { "down", 0, 1 }, { "left", -1, 0 }, { "right", 1, 0 } }
 
-        -- goal band + start band
-        disp.fillRect(0, GOAL_Y - 14, 320, 14, LCD.MID)
-        disp.fillRect(0, START_Y + FROG / 2, 320, 296 - START_Y - FROG / 2, LCD.MID)
-
-        for i, lane in ipairs(LANES) do
-            local is_river = i <= 3
-            for _, o in ipairs(lane.objs) do
-                if is_river then
-                    disp.fillRect(math.floor(o.x), lane.y - 12, lane.w, 24, LCD.DARK)
-                else
-                    disp.fillRect(math.floor(o.x), lane.y - 10, lane.w, 20, LCD.DARK)
-                    disp.fillRect(math.floor(o.x) + 4, lane.y - 4, lane.w - 8, 8, LCD.BG)
+    function game:update(pad, now)
+        for _, h in ipairs(HOPS) do
+            if pad.pressed[h[1]] then
+                local nx = math.max(1, math.min(COLS, self.fx + h[2]))
+                local ny = math.max(1, math.min(ROWS, self.fy + h[3]))
+                if ny == 1 then return reach_home(nx) end
+                self.fx, self.fy = nx, ny
+                SFX.move()
+                if self.fy < self.best then
+                    self.best = self.fy
+                    self.score = self.score + 10
                 end
+                if hazard() then return die() end
+                break
             end
         end
 
-        -- frog (blink while flashing)
-        if flash % 6 < 4 then
-            disp.fillRect(fx - FROG / 2, fy - FROG / 2, FROG, FROG, LCD.DARK)
-            disp.fillRect(fx - FROG / 2 + 3, fy - FROG / 2 + 3, FROG - 6, FROG - 6, LCD.BG)
+        for row, lane in pairs(self.lanes) do
+            if now >= lane.next_shift then
+                lane.next_shift = now + ctx.interval(lane.ms, self.level)
+                lane.offset = (lane.offset + lane.dir) % COLS
+                if lane.kind == "river" and self.fy == row then
+                    self.fx = self.fx + lane.dir
+                    if self.fx < 1 or self.fx > COLS then return die() end
+                end
+            end
         end
-
-        for i = 1, lives do disp.fillRect(252 + (i - 1) * 12, 36, 8, 8, LCD.DARK) end
-
-        if game_over then
-            disp.fillRect(40, 120, 240, 80, LCD.DARK)
-            disp.drawRect(40, 120, 240, 80, LCD.BG)
-            LCD.textCentered("GAME OVER", 132, 2, LCD.BG)
-            LCD.textCentered("SCORE " .. score, 152, 1, LCD.BG)
-            LCD.textCentered("ENTER AGAIN", 172, 1, LCD.BG)
-            LCD.textCentered("ESC MENU", 184, 1, LCD.BG)
-        end
-
-        disp.flush()
+        if hazard() then return die() end
+        return nil
     end
 
-    function scene:exit() end
+    function game:draw(grid)
+        for c = 1, COLS do
+            if self.homes[c] ~= false then grid:set(c, 1, true) end   -- walls and filled homes
+        end
+        for row, lane in pairs(self.lanes) do
+            for c = 1, COLS do
+                if occupied(lane, c) then grid:set(c, row, true) end
+            end
+        end
+        grid:set(self.fx, self.fy, "blink")
+    end
 
-    return scene
+    reset_frog()
+    return game
 end
 
-return { new = new }
+return {
+    id = "frogger",
+    name = "FROGGER",
+    hint = { "D-PAD HOP", "RIDE THE LOGS" },
+    order = "high",
+    demo = DEMO,
+    new = new,
+}
