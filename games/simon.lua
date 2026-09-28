@@ -1,140 +1,141 @@
--- simon.lua — game 11. Expects globals: LCD, SFX, PAD, disp, picocalc.
+-- simon.lua — game 11: watch the pads light up, then repeat the sequence.
+-- The four pads form a plus that matches the d-pad.
+-- Game contract: see lib/runner.lua. Needs the SFX global.
 
-local disp = picocalc.display
-local scene_mgr = picocalc.game.scene
-local save = picocalc.game.save
+local INTRO_MS = 2000             -- the hint shows before the first sequence
+local ON_MS = 450                 -- each pad lights this long at speed 1
+local GAP_MS = 200
+local PRESS_MS = 250              -- a pressed pad stays lit this long
+local ROUND_PAUSE_MS = 700
+local TIMEOUT_MS = 4000           -- no press for this long ends the round
 
-local ZONES = { "up", "down", "left", "right" }
-local ZONE_TONES = { up = 440, down = 330, left = 262, right = 220 }
-local ZONE_LABEL = { up = "^", down = "v", left = "<", right = ">" }
+local PADS = {
+    up    = { x = 4, y = 3,  tone = 440 },
+    left  = { x = 1, y = 9,  tone = 220 },
+    right = { x = 7, y = 9,  tone = 330 },
+    down  = { x = 4, y = 15, tone = 262 },
+}
+local NAMES = { "up", "left", "right", "down" }
+local OUTLINE = { "####", "#..#", "#..#", "####" }
+local FILLED = { "####", "####", "####", "####" }
 
-local function new()
-    local scene = {}
-    local seq, input_idx, show_idx, show_timer, state, score
-    -- state: "show" | "input" | "over"
+local DEMO = {
+    {
+        "...####...",
+        "...####...",
+        "...####...",
+        "...####...",
+        "..........",
+        "..........",
+        "####..####",
+        "#..#..#..#",
+        "#..#..#..#",
+        "####..####",
+        "..........",
+        "..........",
+    },
+    {
+        "...####...",
+        "...#..#...",
+        "...#..#...",
+        "...####...",
+        "..........",
+        "..........",
+        "####..####",
+        "#..#..####",
+        "#..#..####",
+        "####..####",
+        "..........",
+        "..........",
+    },
+}
 
-    local function save_hi()
-        local hi = (save.get("hi_simon") or {}).v or 0
-        if score > hi then save.set("hi_simon", { v = score }) end
+local function new(ctx)
+    local game = { score = 0, seq = {}, state = "intro" }
+
+    local function add_pad() game.seq[#game.seq + 1] = NAMES[math.random(#NAMES)] end
+
+    local function light(name, now, ms)
+        game.lit, game.lit_until = name, now + ms
+        SFX.tone(PADS[name].tone, ms)
     end
 
-    local next_round
-
-    local function reset()
-        seq = {}
-        score = 0
-        next_round()
+    local function start_show(now)
+        game.state = "show"
+        game.status = { "WATCH" }
+        game.show_i = 0
+        game.next_show = now
     end
 
-    function next_round()
-        seq[#seq + 1] = ZONES[math.random(4)]
-        input_idx = 0
-        show_idx = 0
-        show_timer = 0
-        state = "show"
-    end
+    function game:update(pad, now)
+        if self.lit and now >= self.lit_until then self.lit = nil end
 
-    function scene:enter()
-        reset()
-    end
-
-    function scene:update()
-        if state == "over" then
-            local p = PAD.pressed()
-            if p.enter then
-                SFX.start()
-                reset()
-            elseif p.esc then
-                scene_mgr.switch("menu")
-            end
-            return
+        if self.state == "intro" or self.state == "pause" then
+            if now >= self.wait_until then start_show(now) end
+            return nil
         end
 
-        local p = PAD.pressed()
-        if p.esc then scene_mgr.switch("menu") return end
-
-        if state == "show" then
-            show_timer = show_timer + 1
-            if show_timer == 1 then
-                SFX.tone(ZONE_TONES[seq[show_idx + 1]], 180)
+        if self.state == "show" then
+            if now < self.next_show then return nil end
+            self.show_i = self.show_i + 1
+            if self.show_i > #self.seq then
+                self.state = "input"
+                self.status = { "YOUR TURN" }
+                self.input_i = 1
+                self.last_input = now
+                return nil
             end
-            if show_timer >= 30 then
-                show_timer = 0
-                show_idx = show_idx + 1
-                if show_idx >= #seq then
-                    state = "input"
+            local on = ctx.interval(ON_MS, 1)
+            light(self.seq[self.show_i], now, on)
+            self.next_show = now + on + GAP_MS
+            return nil
+        end
+
+        -- input
+        for _, name in ipairs(NAMES) do
+            if pad.pressed[name] then
+                self.last_input = now
+                light(name, now, PRESS_MS)
+                if name ~= self.seq[self.input_i] then
+                    self.status = { "WRONG" }
+                    return "over"
                 end
-            end
-            return
-        end
-
-        -- input state
-        local pressed_zone = nil
-        if p.up then pressed_zone = "up" end
-        if p.down then pressed_zone = "down" end
-        if p.left then pressed_zone = "left" end
-        if p.right then pressed_zone = "right" end
-
-        if pressed_zone then
-            SFX.tone(ZONE_TONES[pressed_zone], 150)
-            if pressed_zone == seq[input_idx + 1] then
-                input_idx = input_idx + 1
-                if input_idx >= #seq then
-                    score = #seq
-                    SFX.levelup()
-                    next_round()
+                self.input_i = self.input_i + 1
+                if self.input_i > #self.seq then
+                    self.score = #self.seq
+                    add_pad()
+                    self.state = "pause"
+                    self.status = nil
+                    self.wait_until = now + ROUND_PAUSE_MS
                 end
-            else
-                state = "over"
-                SFX.over()
-                save_hi()
+                return nil
             end
+        end
+        if now - self.last_input > TIMEOUT_MS then
+            self.status = { "TOO SLOW" }
+            return "over"
+        end
+        return nil
+    end
+
+    function game:draw(grid)
+        for name, p in pairs(PADS) do
+            grid:stamp(name == self.lit and FILLED or OUTLINE, p.x, p.y)
         end
     end
 
-    function scene:draw()
-        LCD.clear()
-        LCD.textCentered("SIMON", 6, 1, LCD.MID)
-        LCD.text("SCORE", 16, 16, 1, LCD.MID)
-        LCD.seg(score, 16, 26, 1, 3, LCD.DARK)
-        LCD.text("HI", 252, 16, 1, LCD.MID)
-        LCD.seg((save.get("hi_simon") or {}).v or 0, 252, 26, 1, 3, LCD.DARK)
-
-        -- 2x2 zone pad
-        local zx, zy, zs = 96, 96, 100
-        for i, zone in ipairs(ZONES) do
-            local cx = zx + ((i - 1) % 2) * zs
-            local cy = zy + math.floor((i - 1) / 2) * zs
-            local lit = false
-            if state == "show" and show_timer <= 15 and seq[show_idx + 1] == zone then
-                lit = true
-            end
-            if lit then
-                disp.fillRect(cx + 4, cy + 4, zs - 8, zs - 8, LCD.DARK)
-                LCD.textCentered(ZONE_LABEL[zone], cy + zs / 2 - 5, 2, LCD.BG)
-            else
-                disp.drawRect(cx + 4, cy + 4, zs - 8, zs - 8, LCD.DARK)
-                LCD.textCentered(ZONE_LABEL[zone], cy + zs / 2 - 5, 2, LCD.MID)
-            end
-        end
-
-        if state == "input" then
-            LCD.textCentered("YOUR TURN", 220, 1, LCD.MID)
-        elseif state == "over" then
-            disp.fillRect(40, 120, 240, 80, LCD.DARK)
-            disp.drawRect(40, 120, 240, 80, LCD.BG)
-            LCD.textCentered("GAME OVER", 132, 2, LCD.BG)
-            LCD.textCentered("SCORE " .. score, 152, 1, LCD.BG)
-            LCD.textCentered("ENTER AGAIN", 172, 1, LCD.BG)
-            LCD.textCentered("ESC MENU", 184, 1, LCD.BG)
-        end
-
-        disp.flush()
-    end
-
-    function scene:exit() end
-
-    return scene
+    add_pad()
+    game.wait_until = ctx.now + INTRO_MS
+    return game
 end
 
-return { new = new }
+return {
+    id = "simon",
+    name = "SIMON",
+    hint = { "WATCH THE PADS", "THEN REPEAT", "WITH THE D-PAD" },
+    messages = { "WATCH", "YOUR TURN", "WRONG", "TOO SLOW" },
+    order = "high",
+    demo = DEMO,
+    new = new,
+    PADS = PADS,
+}
