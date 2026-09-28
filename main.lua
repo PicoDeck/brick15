@@ -37,7 +37,9 @@ local Menu = load_module("lib/menu")
 
 -- ── Games, in menu order; a game that fails to load is left out ─────────────
 
-local GAME_IDS = { "tetris" }
+local GAME_IDS = {
+    "tetris", "snake",
+}
 
 local games = {}
 for _, id in ipairs(GAME_IDS) do
