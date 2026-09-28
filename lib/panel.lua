@@ -6,7 +6,10 @@ local disp = picocalc.display
 
 local X = 176            -- panel left edge
 local W = 320 - X        -- 144px to the screen edge (content uses 136)
-local DIGITS_X = X + 48  -- SPEED / LEVEL digits sit right of their legend
+local RIGHT = X + 99     -- every 7-segment field ends on this column
+
+-- Left edge of a 7-segment field that ends at RIGHT (see LCD.seg widths).
+local function seg_x(t, digits) return RIGHT - (digits * (3 * t + t // 2) - t // 2) end
 
 local Panel = {}
 Panel.__index = Panel
@@ -19,16 +22,18 @@ local FIELDS = {
     { keys = { "label" }, x = X, y = 8, w = W, h = 10,
       draw = function(v) text(v.label, 8) end },
     { keys = { "score" }, x = X, y = 22, w = W, h = 24,
-      draw = function(v) LCD.seg(v.score, X, 22, 4, 6) end },
+      draw = function(v) LCD.seg(v.score, seg_x(4, 6), 22, 4, 6) end },
     { keys = { "hi", "hi_label" }, x = X, y = 50, w = W, h = 18,
       draw = function(v)
           text(v.hi_label or "HI", 54)
-          LCD.seg(v.hi, X + 40, 50, 3, 6)
+          LCD.seg(v.hi, seg_x(3, 6), 50, 3, 6)
       end },
-    { keys = { "speed" }, x = DIGITS_X, y = 160, w = W - 48, h = 18,
-      draw = function(v) LCD.seg(v.speed, DIGITS_X, 160, 3, 1) end },
-    { keys = { "level" }, x = DIGITS_X, y = 184, w = W - 48, h = 18,
-      draw = function(v) LCD.seg(v.level, DIGITS_X, 184, 3, 2) end },
+    { keys = { "next_label" }, x = X, y = 76, w = W, h = 10,
+      draw = function(v) text(v.next_label or "NEXT", 76) end },
+    { keys = { "speed" }, x = X + 80, y = 160, w = W - 80, h = 18,
+      draw = function(v) LCD.seg(v.speed, seg_x(3, 1), 160, 3, 1) end },
+    { keys = { "level" }, x = X + 80, y = 184, w = W - 80, h = 18,
+      draw = function(v) LCD.seg(v.level, seg_x(3, 2), 184, 3, 2) end },
     { keys = { "name" }, x = X, y = 252, w = W, h = 10,
       draw = function(v) text(v.name, 252) end },
     { keys = { "status1" }, x = X, y = 270, w = W, h = 10,
@@ -40,7 +45,7 @@ local FIELDS = {
 }
 
 -- Printed legends: drawn once per full repaint.
-local LEGENDS = { { "NEXT", 76 }, { "SPEED", 164 }, { "LEVEL", 188 }, { "LIVES", 212 } }
+local LEGENDS = { { "SPEED", 164 }, { "LEVEL", 188 }, { "LIVES", 212 } }
 
 function Panel.new(Grid)
     local p = setmetatable({ values = {}, dirty = {}, full = true }, Panel)

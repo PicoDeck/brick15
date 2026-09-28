@@ -5,7 +5,7 @@
 -- The game contract. games/<id>.lua returns:
 --   { id = "snake", name = "SNAKE",        -- name: at most 11 characters
 --     hint = { "D-PAD STEER" },            -- 1-3 lines, each at most 17 characters,
---                                          -- shown for the first 3 s of a round
+--                                          -- shown whenever the game sets no status
 --     messages = { "CLEARED" },            -- every status line the game can show
 --     order = "high",                      -- or "low": fewer is better (Memory)
 --     demo = { frame1, frame2 },           -- two 10x12 '#' patterns for the menu
@@ -16,13 +16,12 @@
 -- Fields the runner reads every frame:
 --   game.score, game.score_text (optional SCORE display string),
 --   game.level, game.lives (nil = unused, shown ghosted),
+--   game.next_label (optional legend for the NEXT box, e.g. "FUEL"),
 --   game.status (nil or up to 3 lines; replaces the hint while set). When a
 --   game returns "over", status[1] (if set) is the headline instead of
 --   GAME OVER, so set it to the end-of-round message or nil first.
 -- Games never call picocalc.display, picocalc.game.save or scene, and never
 -- handle Esc; every position is a whole cell.
-
-local HINT_MS = 3000
 
 local Runner = {}
 Runner.__index = Runner
@@ -54,7 +53,6 @@ function Runner:new_round()
         interval = function(base_ms, level) return Runner.interval(base_ms, speed, level) end,
     })
     self.state = "play"
-    self.round_start = now
     self.record = false
     SFX.start()
 end
@@ -89,16 +87,17 @@ function Runner:update()
     end
 end
 
-function Runner:status_lines(now)
+-- Status lines: the game's own status, else its controls hint. After a
+-- round: the headline (the game's result or GAME OVER), then any new
+-- record, then how to play again.
+function Runner:status_lines()
     local game = self.game
-    if self.state == "play" then
-        if game.status then return game.status end
-        if now - self.round_start < HINT_MS then return self.def.hint end
-        return nil
-    end
-    local first = (self.record and "NEW HI") or (game.status and game.status[1]) or "GAME OVER"
-    if self.state == "curtain" then return { first } end
-    return { first, "ENTER AGAIN", "ESC MENU" }
+    if self.state == "play" then return game.status or self.def.hint end
+    local headline = (game.status and game.status[1]) or "GAME OVER"
+    local record = self.record and (self.def.order == "low" and "NEW BEST" or "NEW HI") or nil
+    if self.state == "curtain" then return { headline, record } end
+    if record then return { headline, record, "ENTER AGAIN" } end
+    return { headline, "ENTER AGAIN", "ESC MENU" }
 end
 
 function Runner:draw()
@@ -122,8 +121,9 @@ function Runner:draw()
     panel:set("speed", self.speed)
     panel:set("level", game.level)
     panel:set("lives", game.lives)
+    panel:set("next_label", game.next_label or "NEXT")
     panel:set("name", def.name)
-    panel:set_status(self:status_lines(now))
+    panel:set_status(self:status_lines())
     self.screen:present(now)
 end
 

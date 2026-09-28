@@ -1,6 +1,7 @@
 -- menu.lua — the brick-style game selector. The grid shows the game number
--- in big brick digits over the game's demo; the panel shows its name,
--- record and the chosen SPEED. Needs the LCD, SFX and PAD globals.
+-- in big brick digits over the game's demo; the panel shows its name (at
+-- the top, beside the number), record and the chosen SPEED. Needs the LCD,
+-- SFX and PAD globals.
 
 local DEMO_MS = 400   -- each demo frame shows this long
 
@@ -71,14 +72,15 @@ function Menu:draw()
         grid:stamp(frames[(now // DEMO_MS) % #frames + 1], 1, 9)
     end
 
-    panel:set("label", "BRICK-15")
+    panel:set("label", def.name)             -- beside the big game number
     panel:set("score", nil)
     panel:set("hi_label", def.order == "low" and "BEST" or "HI")
     panel:set("hi", self.scores:get(def.id))
     panel:set("speed", self.speed)
     panel:set("level", nil)
     panel:set("lives", nil)
-    panel:set("name", def.name)
+    panel:set("next_label", "NEXT")
+    panel:set("name", "BRICK-15")
     panel:set_status({ "< > GAME", "UP DN SPEED", "ENTER PLAY" })
     self.screen:present(now)
 end

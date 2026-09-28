@@ -74,6 +74,31 @@ test("panel: the NEXT grid renders with the panel", function()
     eq(y0, 90, "next top"); eq(y1, 104, "next bottom")
 end)
 
+test("panel: the NEXT legend can be relabelled", function()
+    local p = fresh()
+    p:set("next_label", "FUEL")
+    local y0, y1 = p:render(0)
+    eq(y0, 76, "legend row top"); eq(y1, 85, "legend row bottom")
+    truthy(count_calls("fillRect") > 1, "legend redrawn")
+end)
+
+test("panel: SCORE, HI, SPEED and LEVEL digits share one right edge", function()
+    local p = Panel.new(Grid)
+    p:render(0)
+    local right = {}
+    for _, c in ipairs(CALLS) do
+        local y = c[3]
+        -- ghost segments in the four 7-segment rows (not the NEXT/LIVES bricks)
+        local key = (y >= 22 and y < 46 and "score") or (y >= 50 and y < 68 and "hi")
+                 or (y >= 160 and y < 178 and "speed") or (y >= 184 and y < 202 and "level")
+        if c[1] == "fillRect" and c[6] == LCD.GHOST and key then
+            right[key] = math.max(right[key] or 0, c[2] + c[4])
+        end
+    end
+    eq(right.hi, right.score, "HI edge"); eq(right.speed, right.score, "SPEED edge")
+    eq(right.level, right.score, "LEVEL edge")
+end)
+
 test("panel: invalidate repaints everything", function()
     local p = fresh()
     p:invalidate()

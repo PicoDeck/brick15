@@ -71,13 +71,13 @@ test("runner: a round gets the chosen speed and an interval helper", function()
     eq(math.floor(def.ctx.interval(800, 1)), math.floor(Runner.interval(800, 3, 1)), "interval uses speed")
 end)
 
-test("runner: the hint shows for the first 3 s of a round", function()
+test("runner: the controls hint stays up while the game shows no status", function()
     local def = fake_def()
     local r, screen = setup(def)
     frame(r)
     eq(screen.panel.values.status1, "HINT LINE", "hint")
-    T = 3001; frame(r, 0)
-    eq(screen.panel.values.status1, "", "hint gone")
+    T = 30000; frame(r, 0)
+    eq(screen.panel.values.status1, "HINT LINE", "still there later in the round")
 end)
 
 test("runner: Esc returns to the menu", function()
@@ -120,13 +120,44 @@ test("runner: Enter during the curtain does not restart the round", function()
     eq(r.state, "curtain", "curtain continues")
 end)
 
-test("runner: a beaten record says NEW HI and is saved", function()
+test("runner: a beaten record adds NEW HI under the headline and is saved", function()
     local def = fake_def({ score = 50 })
     local r, screen = setup(def)
     def.over_next = true
     frame(r)
-    eq(screen.panel.values.status1, "NEW HI", "record")
+    eq(screen.panel.values.status1, "GAME OVER", "headline kept")
+    eq(screen.panel.values.status2, "NEW HI", "record")
     eq(SAVES.hi_fake.v, 50, "saved")
+    for _ = 1, 100 do frame(r, 30) end
+    eq(screen.panel.values.status3, "ENTER AGAIN", "how to play again")
+end)
+
+test("runner: a game's own result stays the headline when it sets a record", function()
+    local def = fake_def({ score = 5 })
+    local r, screen = setup(def)
+    r.game.status = { "YOU WIN" }
+    def.over_next = true
+    frame(r)
+    eq(screen.panel.values.status1, "YOU WIN", "result")
+    eq(screen.panel.values.status2, "NEW HI", "record")
+end)
+
+test("runner: fewer-is-better games announce NEW BEST", function()
+    local def = fake_def({ score = 12, order = "low" })
+    local r, screen = setup(def)
+    def.over_next = true
+    frame(r)
+    eq(screen.panel.values.status2, "NEW BEST", "record")
+end)
+
+test("runner: a game can relabel the NEXT box", function()
+    local def = fake_def()
+    local r, screen = setup(def)
+    frame(r)
+    eq(screen.panel.values.next_label, "NEXT", "default")
+    r.game.next_label = "FUEL"
+    frame(r)
+    eq(screen.panel.values.next_label, "FUEL", "relabelled")
 end)
 
 test("runner: Enter after game over starts a new round", function()
