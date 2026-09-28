@@ -1,260 +1,197 @@
--- invaders.lua — game 04. Expects globals: LCD, SFX, PAD, disp, picocalc.
+-- invaders.lua — game 04: shoot the marching block before it reaches you.
+-- Game contract: see lib/runner.lua. Needs the SFX global.
 
-local disp = picocalc.display
-local scene_mgr = picocalc.game.scene
-local save = picocalc.game.save
+local COLS, ROWS = 10, 20
+local BLOCK_W, BLOCK_H = 6, 3
+local GUN_ROW = 19                -- gun is .#. on row 19, ### on row 20
+local MARCH_MS = 600              -- block step at speed 1, level 1, full block
+local BULLET_MS = 40
+local BOMB_MS = 150               -- bomb fall step
+local BOMB_EVERY_MS = 900         -- a new bomb at most this often
+local MAX_BOMBS = 3
 
-local GUN_Y = 296
-local ALIEN_COLS, ALIEN_ROWS = 8, 5
-local CELL_W, CELL_H = 16, 12
-local GAP_X, GAP_Y = 8, 8
-local FIELD_OX, FIELD_OY = 56, 48
+local DEMO = {
+    {
+        "..........",
+        "######....",
+        "######....",
+        "######....",
+        "..........",
+        "..........",
+        "..#.......",
+        "..........",
+        "..........",
+        "..........",
+        "....#.....",
+        "...###....",
+    },
+    {
+        "..........",
+        ".######...",
+        ".######...",
+        ".######...",
+        "..........",
+        "....#.....",
+        "..........",
+        "..........",
+        "..#.......",
+        "....#.....",
+        "....#.....",
+        "...###....",
+    },
+}
 
-local function new()
-    local scene = {}
-    local gun_x, aliens, off_x, off_y, alien_dir, alien_step
-    local bullets, ebullets, score, lives, wave, frame, game_over
+local function new(ctx)
+    local game = { score = 0, level = 1, lives = 3, gun = 5, bombs = {} }
 
-    local function save_hi()
-        local hi = (save.get("hi_invaders") or {}).v or 0
-        if score > hi then save.set("hi_invaders", { v = score }) end
-    end
-
-    local function alien_pos(r, c)
-        return FIELD_OX + (c - 1) * (CELL_W + GAP_X) + off_x,
-               FIELD_OY + r * (CELL_H + GAP_Y) - CELL_H + off_y
-    end
-
-    local function spawn_wave()
-        aliens = {}
-        for r = 1, ALIEN_ROWS do
-            aliens[r] = {}
-            for c = 1, ALIEN_COLS do aliens[r][c] = 1 end
+    local function new_wave(now)
+        game.aliens = {}
+        for r = 1, BLOCK_H do
+            for c = 1, BLOCK_W do
+                game.aliens[#game.aliens + 1] = { c = c, r = r, alive = true }
+            end
         end
-        off_x, off_y = 0, 0
-        alien_dir = 1
-        alien_step = 0
+        game.ox, game.oy = 1, 2          -- grid position of block cell (1,1)
+        game.march_dir = 1
+        game.bullet, game.bombs = nil, {}
+        game.next_march = now + ctx.interval(MARCH_MS, game.level)
+        game.next_bomb = now + BOMB_EVERY_MS
+        game.next_bombs = now + BOMB_MS
     end
 
-    local function reset()
-        gun_x = 160
-        bullets = {}
-        ebullets = {}
-        score = 0
-        lives = 3
-        wave = 1
-        frame = 0
-        game_over = false
-        spawn_wave()
+    function game:alien_pos(a)
+        return self.ox + a.c - 1, self.oy + a.r - 1
     end
 
     local function alive_count()
         local n = 0
-        for r = 1, ALIEN_ROWS do
-            for c = 1, ALIEN_COLS do
-                if aliens[r][c] > 0 then n = n + 1 end
-            end
-        end
+        for _, a in ipairs(game.aliens) do if a.alive then n = n + 1 end end
         return n
     end
 
-    local function any_alive()
-        for r = 1, ALIEN_ROWS do
-            for c = 1, ALIEN_COLS do
-                if aliens[r][c] > 0 then return true end
+    -- Columns of the live block's leftmost/rightmost aliens, and its lowest row.
+    local function extent()
+        local minx, maxx, maxy = COLS + 1, 0, 0
+        for _, a in ipairs(game.aliens) do
+            if a.alive then
+                local x, y = game:alien_pos(a)
+                minx, maxx, maxy = math.min(minx, x), math.max(maxx, x), math.max(maxy, y)
             end
         end
-        return false
+        return minx, maxx, maxy
     end
 
-    local function fire()
-        if #bullets < 2 then
-            bullets[#bullets + 1] = { x = gun_x, y = GUN_Y - 6 }
-            SFX.rotate()
+    local function gun_hit(x, y)
+        return (y == GUN_ROW and x == game.gun)
+            or (y == GUN_ROW + 1 and x >= game.gun - 1 and x <= game.gun + 1)
+    end
+
+    local function march_interval()
+        -- the block speeds up as it thins out
+        local frac = 0.4 + 0.6 * alive_count() / (BLOCK_W * BLOCK_H)
+        return math.max(80, ctx.interval(MARCH_MS, game.level) * frac)
+    end
+
+    function game:update(pad, now)
+        if pad.repeated.left and self.gun > 2 then self.gun = self.gun - 1 end
+        if pad.repeated.right and self.gun < COLS - 1 then self.gun = self.gun + 1 end
+        if (pad.pressed.up or pad.pressed.enter or pad.pressed.f1) and not self.bullet then
+            self.bullet = { x = self.gun, y = GUN_ROW - 1 }
+            self.next_bullet = now + BULLET_MS
+            SFX.move()
         end
-    end
 
-    local function alien_fire()
-        local shooters = {}
-        for c = 1, ALIEN_COLS do
-            for r = ALIEN_ROWS, 1, -1 do
-                if aliens[r][c] > 0 then
-                    shooters[#shooters + 1] = { r = r, c = c }
+        -- player bullet
+        if self.bullet and now >= self.next_bullet then
+            self.next_bullet = now + BULLET_MS
+            local b = self.bullet
+            b.y = b.y - 1
+            for _, a in ipairs(self.aliens) do
+                local x, y = self:alien_pos(a)
+                if a.alive and x == b.x and y == b.y then
+                    a.alive = false
+                    self.bullet = nil
+                    self.score = self.score + 10 * self.level
+                    SFX.hit()
                     break
                 end
             end
-        end
-        if #shooters > 0 and #ebullets < 3 then
-            local s = shooters[math.random(#shooters)]
-            local x, y = alien_pos(s.r, s.c)
-            ebullets[#ebullets + 1] = { x = x + CELL_W / 2, y = y + CELL_H }
-        end
-    end
-
-    function scene:enter()
-        reset()
-    end
-
-    function scene:update()
-        if game_over then
-            local p = PAD.pressed()
-            if p.enter then
-                SFX.start()
-                reset()
-            elseif p.esc then
-                scene_mgr.switch("menu")
+            if self.bullet and b.y < 1 then self.bullet = nil end
+            if alive_count() == 0 then
+                self.level = self.level + 1
+                SFX.levelup()
+                new_wave(now)
+                return nil
             end
-            return
         end
 
-        local p = PAD.pressed()
-        local h = PAD.held()
-        if p.esc then scene_mgr.switch("menu") return end
-
-        if h.left then gun_x = gun_x - 3 end
-        if h.right then gun_x = gun_x + 3 end
-        gun_x = math.max(8, math.min(312, gun_x))
-        if p.up or p.enter or p.f1 then fire() end
-
-        frame = frame + 1
-
-        -- alien march: faster as their numbers thin
-        local total = ALIEN_COLS * ALIEN_ROWS
-        local interval = math.max(2, math.floor((alive_count() / total) * 26) - wave)
-        alien_step = alien_step + 1
-        if alien_step >= interval then
-            alien_step = 0
-            local at_edge = false
-            for c = 1, ALIEN_COLS do
-                for r = 1, ALIEN_ROWS do
-                    if aliens[r][c] > 0 then
-                        local x = FIELD_OX + (c - 1) * (CELL_W + GAP_X) + off_x + alien_dir * 6
-                        if x < 4 or x + CELL_W > 316 then at_edge = true end
-                    end
-                end
-            end
-            if at_edge then
-                alien_dir = -alien_dir
-                off_y = off_y + 8
-                SFX.hit()
+        -- march
+        if now >= self.next_march then
+            self.next_march = now + march_interval()
+            local minx, maxx = extent()
+            if (self.march_dir == 1 and maxx >= COLS) or (self.march_dir == -1 and minx <= 1) then
+                self.oy = self.oy + 1
+                self.march_dir = -self.march_dir
             else
-                off_x = off_x + alien_dir * 6
-                SFX.move()
+                self.ox = self.ox + self.march_dir
+            end
+            local _, _, maxy = extent()
+            if maxy >= GUN_ROW - 1 then return "over" end
+        end
+
+        -- new bomb from the lowest alien of a random live column
+        if now >= self.next_bomb and #self.bombs < MAX_BOMBS then
+            self.next_bomb = now + BOMB_EVERY_MS
+            local lowest = {}
+            for _, a in ipairs(self.aliens) do
+                if a.alive and (not lowest[a.c] or a.r > lowest[a.c].r) then lowest[a.c] = a end
+            end
+            local cols = {}
+            for _, a in pairs(lowest) do cols[#cols + 1] = a end
+            if #cols > 0 then
+                local x, y = self:alien_pos(cols[math.random(#cols)])
+                self.bombs[#self.bombs + 1] = { x = x, y = y + 1 }
             end
         end
 
-        -- player bullets
-        for i = #bullets, 1, -1 do
-            local b = bullets[i]
-            b.y = b.y - 4
-            if b.y < 36 then
-                table.remove(bullets, i)
-            else
-                for r = 1, ALIEN_ROWS do
-                    for c = 1, ALIEN_COLS do
-                        if aliens[r][c] > 0 then
-                            local ax, ay = alien_pos(r, c)
-                            if b.x >= ax and b.x <= ax + CELL_W and b.y >= ay and b.y <= ay + CELL_H then
-                                aliens[r][c] = 0
-                                score = score + (ALIEN_ROWS - r + 1) * 10
-                                table.remove(bullets, i)
-                                SFX.score()
-                                goto next_bullet
-                            end
-                        end
-                    end
-                end
-            end
-            ::next_bullet::
-        end
-
-        -- enemy bullets
-        for i = #ebullets, 1, -1 do
-            local b = ebullets[i]
-            b.y = b.y + 2.5
-            if b.y > 316 then
-                table.remove(ebullets, i)
-            elseif b.x >= gun_x - 8 and b.x <= gun_x + 8 and b.y >= GUN_Y and b.y <= GUN_Y + 8 then
-                table.remove(ebullets, i)
-                lives = lives - 1
-                SFX.hit()
-                if lives <= 0 then
-                    game_over = true
+        -- bombs fall
+        if now >= self.next_bombs then
+            self.next_bombs = now + BOMB_MS
+            local kept = {}
+            for _, b in ipairs(self.bombs) do
+                b.y = b.y + 1
+                if gun_hit(b.x, b.y) then
+                    self.lives = self.lives - 1
                     SFX.over()
-                    save_hi()
+                    self.bombs, self.bullet = {}, nil
+                    if self.lives <= 0 then return "over" end
+                    return nil
                 end
+                if b.y <= ROWS then kept[#kept + 1] = b end
             end
+            self.bombs = kept
         end
-
-        -- aliens land on the gun line
-        for c = 1, ALIEN_COLS do
-            for r = ALIEN_ROWS, 1, -1 do
-                if aliens[r][c] > 0 then
-                    local _, ay = alien_pos(r, c)
-                    if ay + CELL_H >= GUN_Y - 4 then
-                        game_over = true
-                        SFX.over()
-                        save_hi()
-                    end
-                    break
-                end
-            end
-        end
-
-        -- alien fire
-        if frame % math.max(10, 40 - wave * 3) == 0 then alien_fire() end
-
-        -- wave cleared
-        if not any_alive() then
-            wave = wave + 1
-            SFX.levelup()
-            spawn_wave()
-        end
+        return nil
     end
 
-    function scene:draw()
-        LCD.clear()
-        LCD.textCentered("INVADERS", 6, 1, LCD.MID)
-        LCD.seg(score, 16, 16, 2, 6, LCD.DARK)
-        LCD.text("HI " .. ((save.get("hi_invaders") or {}).v or 0), 252, 20, 1, LCD.DARK)
-
-        -- gun
-        disp.fillRect(gun_x - 8, GUN_Y, 16, 8, LCD.DARK)
-        disp.fillRect(gun_x - 2, GUN_Y - 4, 4, 4, LCD.DARK)
-
-        -- aliens
-        for r = 1, ALIEN_ROWS do
-            for c = 1, ALIEN_COLS do
-                if aliens[r][c] > 0 then
-                    local x, y = alien_pos(r, c)
-                    disp.fillRect(x, y, CELL_W, 4, LCD.DARK)
-                    disp.fillRect(x + 2, y + 4, CELL_W - 4, 4, LCD.DARK)
-                    disp.fillRect(x - 2, y + 6, 4, 4, LCD.DARK)
-                    disp.fillRect(x + CELL_W - 2, y + 6, 4, 4, LCD.DARK)
-                end
-            end
+    function game:draw(grid)
+        for _, a in ipairs(self.aliens) do
+            if a.alive then grid:set(self:alien_pos(a)) end
         end
-
-        for _, b in ipairs(bullets) do disp.fillRect(b.x - 1, b.y, 2, 6, LCD.DARK) end
-        for _, b in ipairs(ebullets) do disp.fillRect(b.x - 1, b.y, 2, 6, LCD.MID) end
-
-        for i = 1, lives do disp.fillRect(252 + (i - 1) * 12, 34, 8, 6, LCD.DARK) end
-
-        if game_over then
-            disp.fillRect(40, 120, 240, 80, LCD.DARK)
-            disp.drawRect(40, 120, 240, 80, LCD.BG)
-            LCD.textCentered("GAME OVER", 132, 2, LCD.BG)
-            LCD.textCentered("SCORE " .. score, 152, 1, LCD.BG)
-            LCD.textCentered("ENTER AGAIN", 172, 1, LCD.BG)
-            LCD.textCentered("ESC MENU", 184, 1, LCD.BG)
-        end
-
-        disp.flush()
+        grid:stamp({ ".#.", "###" }, self.gun - 1, GUN_ROW)
+        if self.bullet then grid:set(self.bullet.x, self.bullet.y, true) end
+        for _, b in ipairs(self.bombs) do grid:set(b.x, b.y, true) end
     end
 
-    function scene:exit() end
-
-    return scene
+    new_wave(ctx.now)
+    return game
 end
 
-return { new = new }
+return {
+    id = "invaders",
+    name = "INVADERS",
+    hint = { "< > MOVE", "UP FIRE" },
+    order = "high",
+    demo = DEMO,
+    new = new,
+}
