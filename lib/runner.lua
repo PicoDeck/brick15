@@ -1,6 +1,26 @@
 -- runner.lua — the "play" scene. Hosts one game at a time and owns what
 -- every game shares: Esc to the menu, control hints, the game-over curtain,
 -- saving records, retry, and the panel. Needs the LCD, SFX and PAD globals.
+--
+-- The game contract. games/<id>.lua returns:
+--   { id = "snake", name = "SNAKE",        -- name: at most 11 characters
+--     hint = { "D-PAD STEER" },            -- 1-3 lines, each at most 17 characters,
+--                                          -- shown for the first 3 s of a round
+--     messages = { "CLEARED" },            -- every status line the game can show
+--     order = "high",                      -- or "low": fewer is better (Memory)
+--     demo = { frame1, frame2 },           -- two 10x12 '#' patterns for the menu
+--     new = function(ctx) return game end }
+-- ctx = { speed = 1..9, now = ms, interval = function(base_ms, level) -> ms }
+-- game:update(pad, now_ms)   pad = PAD.read(); return "over" to end the round
+-- game:draw(grid, next)      light cells; both grids arrive cleared
+-- Fields the runner reads every frame:
+--   game.score, game.score_text (optional SCORE display string),
+--   game.level, game.lives (nil = unused, shown ghosted),
+--   game.status (nil or up to 3 lines; replaces the hint while set). When a
+--   game returns "over", status[1] (if set) is the headline instead of
+--   GAME OVER, so set it to the end-of-round message or nil first.
+-- Games never call picocalc.display, picocalc.game.save or scene, and never
+-- handle Esc; every position is a whole cell.
 
 local HINT_MS = 3000
 
