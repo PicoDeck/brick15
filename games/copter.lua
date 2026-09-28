@@ -1,114 +1,132 @@
--- copter.lua — game 08. Expects globals: LCD, SFX, PAD, disp, picocalc.
+-- copter.lua — game 08: steer through a tunnel that scrolls down at you.
+-- Game contract: see lib/runner.lua. Needs the SFX global.
 
-local disp = picocalc.display
-local scene_mgr = picocalc.game.scene
-local save = picocalc.game.save
+local COLS, ROWS = 10, 20
+local SHIP = { ".#.", "###" }     -- nose on row 18, body on row 19
+local SHIP_ROW = 18
+local STEP_MS = 220               -- scroll speed at speed 1, level 1
+local ROWS_PER_LEVEL = 60
+local MIN_GAP = 3
+local BLOCK_MIN_GAP = 6           -- blocks only appear in gaps this wide
+local BLOCK_CHANCE = 0.12
 
-local SHIP_X = 60
-local SHIP = 10
-local TOP, BOT = 40, 312
+local DEMO = {
+    {
+        "##.....###",
+        "##.....###",
+        "###.....##",
+        "###..#..##",
+        "###.....##",
+        "####.....#",
+        "###.....##",
+        "###.....##",
+        "##.....###",
+        "##..#..###",
+        "##.###.###",
+        "##.....###",
+    },
+    {
+        "##.....###",
+        "##.....###",
+        "##.....###",
+        "###.....##",
+        "###..#..##",
+        "###.....##",
+        "####.....#",
+        "###.....##",
+        "###.....##",
+        "##.#...###",
+        "######.###",
+        "##.....###",
+    },
+}
 
-local function new()
-    local scene = {}
-    local y, vy, gap_h, gap_c, score, game_over, col_x
-    -- column model: the world is a vertical gap [gap_c-gap_h/2, gap_c+gap_h/2]
-    -- scrolled by generating a new gap center as columns pass.
+local function new(ctx)
+    local game = { score = 0, level = 1, x = 5, rows = {} }
+    for r = 1, ROWS do game.rows[r] = { left = 1, right = 2 } end
+    game.gen_left, game.gen_width = 1, 7             -- the gap of the newest row
+    game.next_step = ctx.now + ctx.interval(STEP_MS, game.level)
 
-    local function save_hi()
-        local hi = (save.get("hi_copter") or {}).v or 0
-        if score > hi then save.set("hi_copter", { v = score }) end
+    local function target_width()
+        return math.max(MIN_GAP, 8 - game.level)
     end
 
-    local function reset()
-        y = 176
-        vy = 0
-        gap_h = 90
-        gap_c = 176
-        score = 0
-        game_over = false
-        col_x = 0
-    end
-
-    function scene:enter()
-        reset()
-    end
-
-    function scene:update()
-        if game_over then
-            local p = PAD.pressed()
-            if p.enter then
-                SFX.start()
-                reset()
-            elseif p.esc then
-                scene_mgr.switch("menu")
+    -- Next tunnel row: per row, EITHER the gap changes width by one OR it
+    -- shifts by one, never both, so a 3-wide ship can always follow it.
+    local function next_row()
+        local left, width = game.gen_left, game.gen_width
+        local want = target_width()
+        if width ~= want then
+            if width > want then
+                width = width - 1
+                if math.random(2) == 1 then left = left + 1 end
+            else
+                width = width + 1
+                if left > 0 and math.random(2) == 1 then left = left - 1 end
             end
-            return
+        else
+            local shift = math.random(-1, 1)
+            if left + shift >= 0 and left + shift + width <= COLS then left = left + shift end
         end
-
-        local p = PAD.pressed()
-        local h = PAD.held()
-        if p.esc then scene_mgr.switch("menu") return end
-
-        local thrust = h.up or h.enter or h.f1
-        vy = vy + (thrust and -0.42 or 0.22)
-        vy = math.max(-3.5, math.min(3.5, vy))
-        y = y + vy
-
-        -- distance: score ticks up; gap tightens as score grows
-        col_x = col_x + 2.5
-        if col_x >= 40 then
-            col_x = 0
-            score = score + 1
-            gap_h = math.max(48, 90 - math.floor(score / 4))
-            -- random-walk the gap center
-            gap_c = gap_c + math.random() * 44 - 22
-            gap_c = math.max(TOP + gap_h / 2 + 4, math.min(BOT - gap_h / 2 - 4, gap_c))
-            if score % 25 == 0 then SFX.score() end
+        left = math.max(0, math.min(COLS - width, left))
+        game.gen_left, game.gen_width = left, width
+        local row = { left = left, right = COLS - left - width }
+        if width >= BLOCK_MIN_GAP and math.random() < BLOCK_CHANCE then
+            -- one cell in from either wall, leaving a wide free run
+            row.block = math.random(2) == 1 and left + 2 or left + width - 1
         end
-
-        local gap_top = gap_c - gap_h / 2
-        local gap_bot = gap_c + gap_h / 2
-        if y - SHIP / 2 < gap_top or y + SHIP / 2 > gap_bot then
-            game_over = true
-            SFX.over()
-            save_hi()
-        end
+        return row
     end
 
-    function scene:draw()
-        LCD.clear()
-        LCD.textCentered("COPTER", 6, 1, LCD.MID)
-        LCD.seg(score, 16, 16, 2, 6, LCD.DARK)
-        LCD.text("HI " .. ((save.get("hi_copter") or {}).v or 0), 252, 20, 1, LCD.DARK)
-
-        local gap_top = gap_c - gap_h / 2
-        local gap_bot = gap_c + gap_h / 2
-
-        -- solid ceiling and floor around the gap
-        disp.fillRect(0, TOP, 320, gap_top - TOP, LCD.DARK)
-        disp.fillRect(0, gap_bot, 320, BOT - gap_bot, LCD.DARK)
-        disp.fillRect(0, gap_top - 2, 320, 2, LCD.MID)
-        disp.fillRect(0, gap_bot, 320, 2, LCD.MID)
-
-        -- ship
-        disp.fillRect(SHIP_X - SHIP / 2, math.floor(y) - SHIP / 2, SHIP, SHIP, LCD.DARK)
-        disp.fillRect(SHIP_X + SHIP / 2, math.floor(y) - 2, 8, 4, LCD.DARK)
-
-        if game_over then
-            disp.fillRect(40, 120, 240, 80, LCD.DARK)
-            disp.drawRect(40, 120, 240, 80, LCD.BG)
-            LCD.textCentered("GAME OVER", 132, 2, LCD.BG)
-            LCD.textCentered("SCORE " .. score, 152, 1, LCD.BG)
-            LCD.textCentered("ENTER AGAIN", 172, 1, LCD.BG)
-            LCD.textCentered("ESC MENU", 184, 1, LCD.BG)
-        end
-
-        disp.flush()
+    function game:scroll()
+        table.remove(self.rows)
+        table.insert(self.rows, 1, next_row())
     end
 
-    function scene:exit() end
+    local function blocked(c, r)
+        local row = game.rows[r]
+        return c <= row.left or c > COLS - row.right or c == row.block
+    end
 
-    return scene
+    local function crashed()
+        if blocked(game.x, SHIP_ROW) then return true end
+        for c = game.x - 1, game.x + 1 do
+            if blocked(c, SHIP_ROW + 1) then return true end
+        end
+        return false
+    end
+
+    function game:update(pad, now)
+        if pad.repeated.left and self.x > 2 then self.x = self.x - 1 end
+        if pad.repeated.right and self.x < COLS - 1 then self.x = self.x + 1 end
+        if crashed() then return "over" end
+
+        if now < self.next_step then return nil end
+        self.next_step = now + ctx.interval(STEP_MS, self.level)
+        self:scroll()
+        self.score = self.score + 1
+        self.level = self.score // ROWS_PER_LEVEL + 1
+        if crashed() then return "over" end
+        return nil
+    end
+
+    function game:draw(grid)
+        for r, row in ipairs(self.rows) do
+            for c = 1, row.left do grid:set(c, r, true) end
+            for c = COLS - row.right + 1, COLS do grid:set(c, r, true) end
+            if row.block then grid:set(row.block, r, true) end
+        end
+        grid:stamp(SHIP, self.x - 1, SHIP_ROW)
+    end
+
+    return game
 end
 
-return { new = new }
+return {
+    id = "copter",
+    name = "COPTER",
+    hint = { "< > STEER" },
+    order = "high",
+    demo = DEMO,
+    new = new,
+}
