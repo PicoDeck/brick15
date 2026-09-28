@@ -1,154 +1,139 @@
--- memory.lua — game 10. Expects globals: LCD, SFX, PAD, disp, picocalc.
+-- memory.lua — game 10: find the 9 pairs in as few turns as possible.
+-- 18 cards (3 across, 6 down) of 2x2 bricks; face down they are solid.
+-- Game contract: see lib/runner.lua. Needs the SFX global.
 
-local disp = picocalc.display
-local scene_mgr = picocalc.game.scene
-local save = picocalc.game.save
+local CARD_COLS, CARD_ROWS = 3, 6
+local CARD_X = { 2, 5, 8 }        -- left column of each card column
+local SHOW_MISS_MS = 900          -- a mismatched pair stays up this long
+local SHOW_MATCH_MS = 400         -- a matched pair shows this long, then goes
 
-local COLS, ROWS = 4, 4
-local CELL = 56
-local OX, OY = 32, 56
-local SYMBOLS = { "A", "B", "C", "D", "E", "F", "G", "H" }
+-- The 9 faces: every 2-brick pattern of a 2x2 plus three 3-brick ones.
+local FACES = {
+    { "##", ".." }, { "..", "##" }, { "#.", "#." }, { ".#", ".#" },
+    { "#.", ".#" }, { ".#", "#." },
+    { "##", "#." }, { "##", ".#" }, { "#.", "##" },
+}
 
-local function new()
-    local scene = {}
-    local cards, flipped, matched, cursor, turns, state, hide_timer
-    -- state: "pick" | "show" | "over"
+local DEMO = {
+    {
+        ".##.##.##.",
+        ".##.##.##.",
+        "..........",
+        ".##.#..##.",
+        ".##..#.##.",
+        "..........",
+        ".##.##.##.",
+        ".##.##.##.",
+        "..........",
+        ".##.##.##.",
+        ".##.##.##.",
+        "..........",
+    },
+    {
+        ".##.##.##.",
+        ".##.##.##.",
+        "..........",
+        ".##.#..##.",
+        ".##..#.##.",
+        "..........",
+        ".##.##.#..",
+        ".##.##..#.",
+        "..........",
+        ".##.##.##.",
+        ".##.##.##.",
+        "..........",
+    },
+}
 
-    local function save_best()
-        local best = (save.get("hi_memory") or {}).v or 0
-        if best == 0 or turns < best then save.set("hi_memory", { v = turns }) end
-    end
-
-    local function reset()
-        local deck = {}
-        for i = 1, 8 do
-            deck[#deck + 1] = SYMBOLS[i]
-            deck[#deck + 1] = SYMBOLS[i]
-        end
-        -- shuffle
-        for i = #deck, 2, -1 do
-            local j = math.random(i)
-            deck[i], deck[j] = deck[j], deck[i]
-        end
-        cards = {}
-        for i = 1, 16 do cards[i] = { sym = deck[i], up = false, done = false } end
-        flipped = {}
-        matched = 0
-        cursor = 1
-        turns = 0
-        state = "pick"
-        hide_timer = 0
-    end
-
-    local function cell_xy(i)
-        local c = (i - 1) % COLS + 1
-        local r = math.floor((i - 1) / COLS) + 1
-        return OX + (c - 1) * CELL, OY + (r - 1) * CELL
-    end
-
-    function scene:enter()
-        reset()
-    end
-
-    function scene:update()
-        if state == "over" then
-            local p = PAD.pressed()
-            if p.enter then
-                SFX.start()
-                reset()
-            elseif p.esc then
-                scene_mgr.switch("menu")
-            end
-            return
-        end
-
-        local p = PAD.pressed()
-        if p.esc then scene_mgr.switch("menu") return end
-
-        if state == "show" then
-            hide_timer = hide_timer - 1
-            if hide_timer <= 0 then
-                for _, i in ipairs(flipped) do cards[i].up = false end
-                flipped = {}
-                state = "pick"
-            end
-            return
-        end
-
-        -- cursor move
-        local c = (cursor - 1) % COLS + 1
-        local r = math.floor((cursor - 1) / COLS) + 1
-        if p.left and c > 1 then cursor = cursor - 1 SFX.move() end
-        if p.right and c < COLS then cursor = cursor + 1 SFX.move() end
-        if p.up and r > 1 then cursor = cursor - COLS SFX.move() end
-        if p.down and r < ROWS then cursor = cursor + COLS SFX.move() end
-
-        -- flip
-        if (p.enter or p.f1) and #flipped < 2 and not cards[cursor].done then
-            cards[cursor].up = true
-            flipped[#flipped + 1] = cursor
-            SFX.rotate()
-            if #flipped == 2 then
-                turns = turns + 1
-                local a, b = cards[flipped[1]], cards[flipped[2]]
-                if a.sym == b.sym then
-                    a.done, b.done = true, true
-                    matched = matched + 2
-                    flipped = {}
-                    SFX.score()
-                    if matched == 16 then
-                        state = "over"
-                        SFX.levelup()
-                        save_best()
-                    end
-                else
-                    state = "show"
-                    hide_timer = 45
-                end
-            end
-        end
-    end
-
-    function scene:draw()
-        LCD.clear()
-        LCD.textCentered("MEMORY", 6, 1, LCD.MID)
-        LCD.text("TURNS", 16, 16, 1, LCD.MID)
-        LCD.seg(turns, 16, 26, 1, 3, LCD.DARK)
-        LCD.text("BEST", 252, 16, 1, LCD.MID)
-        LCD.seg((save.get("hi_memory") or {}).v or 0, 252, 26, 1, 3, LCD.DARK)
-
-        for i = 1, 16 do
-            local x, y = cell_xy(i)
-            local card = cards[i]
-            if card.done then
-                disp.fillRect(x + 4, y + 4, CELL - 8, CELL - 8, LCD.MID)
-            elseif card.up then
-                disp.fillRect(x + 4, y + 4, CELL - 8, CELL - 8, LCD.DARK)
-                LCD.textCenteredAt(card.sym, x + CELL / 2, y + CELL / 2 - 5, 2, LCD.BG)
-            else
-                disp.drawRect(x + 4, y + 4, CELL - 8, CELL - 8, LCD.DARK)
-                disp.drawRect(x + 8, y + 8, CELL - 16, CELL - 16, LCD.MID)
-            end
-            if i == cursor and state ~= "over" then
-                disp.drawRect(x + 1, y + 1, CELL - 2, CELL - 2, LCD.DARK)
-            end
-        end
-
-        if state == "over" then
-            disp.fillRect(40, 120, 240, 80, LCD.DARK)
-            disp.drawRect(40, 120, 240, 80, LCD.BG)
-            LCD.textCentered("YOU WIN", 132, 2, LCD.BG)
-            LCD.textCentered("TURNS " .. turns, 152, 1, LCD.BG)
-            LCD.textCentered("ENTER AGAIN", 172, 1, LCD.BG)
-            LCD.textCentered("ESC MENU", 184, 1, LCD.BG)
-        end
-
-        disp.flush()
-    end
-
-    function scene:exit() end
-
-    return scene
+local function card_pos(i)
+    local col = (i - 1) % CARD_COLS + 1
+    local row = (i - 1) // CARD_COLS + 1
+    return CARD_X[col], 2 + (row - 1) * 3
 end
 
-return { new = new }
+local function new(ctx)
+    local game = { score = 0, cursor = 1, cards = {} }
+
+    local syms = {}
+    for s = 1, #FACES do syms[#syms + 1] = s syms[#syms + 1] = s end
+    for i = #syms, 2, -1 do                           -- shuffle
+        local j = math.random(i)
+        syms[i], syms[j] = syms[j], syms[i]
+    end
+    for i, s in ipairs(syms) do game.cards[i] = { sym = s, up = false, done = false } end
+
+    local function all_done()
+        for _, card in ipairs(game.cards) do if not card.done then return false end end
+        return true
+    end
+
+    function game:update(pad, now)
+        -- a pair on show: wait, then remove it or turn it back over
+        if self.showing then
+            if now < self.showing.until_ms then return nil end
+            local a, b = self.cards[self.showing[1]], self.cards[self.showing[2]]
+            if a.sym == b.sym then a.done, b.done = true, true
+            else a.up, b.up = false, false end
+            self.showing = nil
+            if all_done() then
+                self.status = { "CLEARED" }
+                return "over"
+            end
+            return nil
+        end
+
+        local c = (self.cursor - 1) % CARD_COLS
+        if pad.repeated.left and c > 0 then self.cursor = self.cursor - 1 end
+        if pad.repeated.right and c < CARD_COLS - 1 then self.cursor = self.cursor + 1 end
+        if pad.repeated.up and self.cursor > CARD_COLS then self.cursor = self.cursor - CARD_COLS end
+        if pad.repeated.down and self.cursor <= CARD_COLS * (CARD_ROWS - 1) then
+            self.cursor = self.cursor + CARD_COLS
+        end
+
+        local card = self.cards[self.cursor]
+        if (pad.pressed.enter or pad.pressed.f1) and not card.done and not card.up then
+            card.up = true
+            SFX.select()
+            if self.first then
+                self.score = self.score + 1                    -- one turn = two cards
+                local match = self.cards[self.first].sym == card.sym
+                self.showing = { self.first, self.cursor,
+                                 until_ms = now + (match and SHOW_MATCH_MS or SHOW_MISS_MS) }
+                if match then SFX.score() else SFX.hit() end
+                self.first = nil
+            else
+                self.first = self.cursor
+            end
+        end
+        return nil
+    end
+
+    function game:draw(grid)
+        for i, card in ipairs(self.cards) do
+            if not card.done then
+                local x, y = card_pos(i)
+                local v = (i == self.cursor) and "blink" or true
+                if card.up then grid:stamp(FACES[card.sym], x, y, v)
+                else grid:stamp({ "##", "##" }, x, y, v) end
+            end
+        end
+        -- the cursor on an empty slot still shows where it is
+        if self.cards[self.cursor].done then
+            local x, y = card_pos(self.cursor)
+            grid:set(x, y, "blink")
+        end
+    end
+
+    return game
+end
+
+return {
+    id = "memory",
+    name = "MEMORY",
+    hint = { "D-PAD MOVE", "ENTER FLIP", "FEWEST TURNS WIN" },
+    messages = { "CLEARED" },
+    order = "low",
+    demo = DEMO,
+    new = new,
+    FACES = FACES,
+}
