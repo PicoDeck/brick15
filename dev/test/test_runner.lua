@@ -150,6 +150,16 @@ test("runner: fewer-is-better games announce NEW BEST", function()
     eq(screen.panel.values.status2, "NEW BEST", "record")
 end)
 
+test("runner: a game can relabel SCORE", function()
+    local def = fake_def()
+    local r, screen = setup(def)
+    frame(r)
+    eq(screen.panel.values.label, "SCORE", "default")
+    r.game.score_label = "TURNS"
+    frame(r)
+    eq(screen.panel.values.label, "TURNS", "relabelled")
+end)
+
 test("runner: a game can relabel the NEXT box", function()
     local def = fake_def()
     local r, screen = setup(def)

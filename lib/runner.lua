@@ -15,6 +15,7 @@
 -- game:draw(grid, next)      light cells; both grids arrive cleared
 -- Fields the runner reads every frame:
 --   game.score, game.score_text (optional SCORE display string),
+--   game.score_label (optional legend instead of SCORE, e.g. "TURNS"),
 --   game.level, game.lives (nil = unused, shown ghosted),
 --   game.next_label (optional legend for the NEXT box, e.g. "FUEL"),
 --   game.status (nil or up to 3 lines; replaces the hint while set). When a
@@ -114,7 +115,7 @@ function Runner:draw()
         panel.next:clear()
     end
 
-    panel:set("label", "SCORE")
+    panel:set("label", game.score_label or "SCORE")
     panel:set("score", game.score_text or game.score)
     panel:set("hi_label", def.order == "low" and "BEST" or "HI")
     panel:set("hi", self.scores:get(def.id))

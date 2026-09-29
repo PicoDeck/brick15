@@ -61,19 +61,22 @@ function Grid:stamp(pattern, c, r, v)
     end
 end
 
--- 3x5 font glyphs as bricks, one empty column between characters.
+-- Font glyphs as bricks, one empty column between characters.
 function Grid:text(str, c, r, v)
     str = string.upper(str)
     for i = 1, #str do
         local glyph = LCD.FONT[string.sub(str, i, i)]
         if glyph then
             for dy = 1, 5 do
-                for dx = 1, 3 do
+                for dx = 1, #glyph[dy] do
                     if string.sub(glyph[dy], dx, dx) == "1" then
-                        self:set(c + (i - 1) * 4 + dx - 1, r + dy - 1, v)
+                        self:set(c + dx - 1, r + dy - 1, v)
                     end
                 end
             end
+            c = c + #glyph[1] + 1
+        else
+            c = c + 4
         end
     end
 end

@@ -15,7 +15,7 @@ LCD.GHOST = disp.rgb(146, 156, 94)    -- unlit bricks and segments
 
 LCD.clear = function() disp.clear(LCD.BG) end
 
--- ── 3x5 pixel font ────────────────────────────────────────────────────────────
+-- ── 3x5 pixel font (M, N and W are 5 wide) ───────────────────────────────────
 
 local FONT = {
     ["0"] = { "111", "101", "101", "101", "111" },
@@ -40,8 +40,8 @@ local FONT = {
     ["J"] = { "001", "001", "001", "101", "010" },
     ["K"] = { "101", "101", "110", "101", "101" },
     ["L"] = { "100", "100", "100", "100", "111" },
-    ["M"] = { "101", "111", "111", "101", "101" },
-    ["N"] = { "110", "101", "101", "101", "101" },
+    ["M"] = { "10001", "11011", "10101", "10001", "10001" },   -- 5 wide: at 3
+    ["N"] = { "10001", "11001", "10101", "10011", "10001" },   -- wide M, N and W
     ["O"] = { "010", "101", "101", "101", "010" },
     ["P"] = { "111", "101", "111", "100", "100" },
     ["Q"] = { "010", "101", "101", "010", "001" },
@@ -50,7 +50,7 @@ local FONT = {
     ["T"] = { "111", "010", "010", "010", "010" },
     ["U"] = { "101", "101", "101", "101", "111" },
     ["V"] = { "101", "101", "101", "101", "010" },
-    ["W"] = { "101", "101", "111", "111", "101" },
+    ["W"] = { "10001", "10001", "10101", "11011", "10001" },   -- read as H
     ["X"] = { "101", "101", "010", "101", "101" },
     ["Y"] = { "101", "101", "010", "010", "010" },
     ["Z"] = { "111", "001", "010", "100", "111" },
@@ -70,13 +70,14 @@ LCD.FONT = FONT
 local RUNS = {}
 for ch, rows in pairs(FONT) do
     local runs = {}
+    local w = #rows[1]
     for r = 1, 5 do
         local bits = rows[r]
         local c = 1
-        while c <= 3 do
+        while c <= w do
             if string.sub(bits, c, c) == "1" then
                 local start = c
-                while c <= 3 and string.sub(bits, c, c) == "1" do c = c + 1 end
+                while c <= w and string.sub(bits, c, c) == "1" do c = c + 1 end
                 runs[#runs + 1] = { r - 1, start - 1, c - start }
             else
                 c = c + 1
@@ -86,9 +87,18 @@ for ch, rows in pairs(FONT) do
     RUNS[ch] = runs
 end
 
+-- Dots a glyph advances: its width plus a 1-dot gap (unknown characters
+-- take a normal 3-wide slot).
+local function advance(ch)
+    local g = FONT[ch]
+    return (g and #g[1] or 3) + 1
+end
+
 function LCD.textWidth(str, s)
     if #str == 0 then return 0 end
-    return #str * 4 * s - s
+    local dots = 0
+    for i = 1, #str do dots = dots + advance(string.sub(str, i, i)) end
+    return dots * s - s
 end
 
 -- Draw text in the 3x5 font at scale s (2 or more). Returns width drawn.
@@ -96,14 +106,16 @@ function LCD.text(str, x, y, s, color)
     assert(s >= 2, "LCD.text: scale must be >= 2")
     str = string.upper(str)
     x, y, s = math.floor(x), math.floor(y), math.floor(s)
+    local gx = x
     for i = 1, #str do
-        local runs = RUNS[string.sub(str, i, i)]
+        local ch = string.sub(str, i, i)
+        local runs = RUNS[ch]
         if runs then
-            local gx = x + (i - 1) * 4 * s
             for _, run in ipairs(runs) do
                 disp.fillRect(gx + run[2] * s, y + run[1] * s, run[3] * s, s, color)
             end
         end
+        gx = gx + advance(ch) * s
     end
     return LCD.textWidth(str, s)
 end

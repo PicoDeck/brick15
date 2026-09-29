@@ -18,7 +18,7 @@ test("pong: meets the game contract", function()
 end)
 
 test("pong: the hint says which paddle is yours", function()
-    eq(pong.hint[1], "BOTTOM PAD IS YOU", "first hint line")
+    eq(pong.hint[1], "YOU: BOTTOM PAD", "first hint line")
 end)
 
 test("pong: starts 00-00 with the ball on your paddle", function()

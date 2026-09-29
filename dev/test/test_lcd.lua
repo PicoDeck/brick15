@@ -1,10 +1,19 @@
 need("lib/lcd.lua")
 
-test("font: M, N and W use the fixed patterns", function()
+test("font: M, N and W are 5 dots wide so they can't read as H", function()
     local M, N, W = LCD.FONT["M"], LCD.FONT["N"], LCD.FONT["W"]
-    eq(table.concat(M, ","), "101,111,111,101,101", "M")
-    eq(table.concat(N, ","), "110,101,101,101,101", "N")
-    eq(table.concat(W, ","), "101,101,111,111,101", "W")
+    eq(table.concat(M, ","), "10001,11011,10101,10001,10001", "M")
+    eq(table.concat(N, ","), "10001,11001,10101,10011,10001", "N")
+    eq(table.concat(W, ","), "10001,10001,10101,11011,10001", "W")
+end)
+
+test("text: wide glyphs advance by their own width", function()
+    eq(LCD.textWidth("HI", 2), 14, "two 3-wide glyphs")
+    eq(LCD.textWidth("MI", 2), 18, "a 5-wide glyph takes 2 dots more")
+    LCD.text("MI", 0, 0, 2, LCD.DARK)
+    local maxx = 0
+    for _, c in ipairs(CALLS) do maxx = math.max(maxx, c[2] + c[4]) end
+    eq(maxx, 18, "drawn width matches textWidth")
 end)
 
 test("font: 1 has a flag and a foot, so it can't read as I", function()

@@ -52,7 +52,7 @@ local function card_pos(i)
 end
 
 local function new(ctx)
-    local game = { score = 0, cursor = 1, cards = {} }
+    local game = { score = 0, cursor = 1, cards = {}, score_label = "TURNS" }
 
     local syms = {}
     for s = 1, #FACES do syms[#syms + 1] = s syms[#syms + 1] = s end
@@ -130,7 +130,7 @@ end
 return {
     id = "memory",
     name = "MEMORY",
-    hint = { "D-PAD MOVE", "ENTER FLIP", "FEWEST TURNS WIN" },
+    hint = { "D-PAD MOVE", "ENTER FLIP", "FEWEST TURNS" },
     messages = { "CLEARED" },
     order = "low",
     demo = DEMO,

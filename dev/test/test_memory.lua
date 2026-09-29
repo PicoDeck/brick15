@@ -22,6 +22,7 @@ end)
 
 test("memory: 18 face-down cards, 9 symbols in pairs", function()
     local g = new_game()
+    eq(g.score_label, "TURNS", "the score is a turn count")
     eq(#g.cards, 18, "cards")
     local count = {}
     for _, card in ipairs(g.cards) do

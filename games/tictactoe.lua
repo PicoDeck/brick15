@@ -147,7 +147,9 @@ local function new(ctx)
             elseif mark == "O" then grid:stamp(O_MARK, x, y, v)
             else grid:set(x + 1, y + 1, true) end       -- empty: a centre dot marks the cell
             if i == self.cursor and not self.result_until then
-                if mark == " " then grid:stamp({ "###", "###", "###" }, x, y, "blink")
+                -- a blinking plus around the centre dot (never solid: it would
+                -- merge with a neighbouring O); on a taken cell the mark blinks
+                if mark == " " then grid:stamp({ ".#.", "#.#", ".#." }, x, y, "blink")
                 else grid:stamp(mark == "X" and X_MARK or O_MARK, x, y, "blink") end
             end
         end

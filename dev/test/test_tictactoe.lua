@@ -106,6 +106,17 @@ test("tictactoe: each empty cell shows a centre dot, so the board is visible", f
     end
 end)
 
+test("tictactoe: the cursor on an empty cell is a blinking plus", function()
+    local g = new_game()
+    g.cursor = 5                               -- cell 5 spans cols 4-6, rows 9-11
+    local grid = draw_game(g)
+    for _, p in ipairs({ { 5, 9 }, { 4, 10 }, { 6, 10 }, { 5, 11 } }) do
+        eq(grid:get(p[1], p[2]), "blink", "arm " .. p[1] .. "," .. p[2])
+    end
+    eq(grid:get(4, 9), false, "corners stay dark, unlike X")
+    eq(grid:get(5, 10), true, "the centre dot stays steady")
+end)
+
 test("tictactoe: X and O are drawn as 3x3 marks in their cells", function()
     local g = new_game()
     board(g, "X.......O")
@@ -113,5 +124,5 @@ test("tictactoe: X and O are drawn as 3x3 marks in their cells", function()
     local grid = draw_game(g)
     eq(grid:get(1, 6), true, "X corner"); eq(grid:get(2, 6), false, "X gap"); eq(grid:get(2, 7), true, "X centre")
     eq(grid:get(8, 13), false, "O hollow"); eq(grid:get(7, 12), true, "O ring")
-    eq(grid:get(5, 10), "blink", "cursor on the empty centre cell")
+    eq(grid:get(5, 9), "blink", "cursor on the empty centre cell: plus arm")
 end)

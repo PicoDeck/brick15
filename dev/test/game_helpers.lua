@@ -46,10 +46,10 @@ function count_lit(grid)
     return n
 end
 
--- Panel text: at most 17 characters a line, only characters the font has.
+-- Panel text: fits the panel (136 px at scale 2), only characters the font has.
 function check_text(lines)
     for _, l in ipairs(lines) do
-        truthy(#l <= 17, "at most 17 characters: " .. l)
+        truthy(LCD.textWidth(string.upper(l), 2) <= 136, "fits the panel: " .. l)
         for ch in string.upper(l):gmatch(".") do
             truthy(LCD.FONT[ch], "font has '" .. ch .. "' (" .. l .. ")")
         end
