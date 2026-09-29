@@ -20,6 +20,20 @@ test("app: the manifest is BRICK-15", function()
     truthy(not manifest:lower():find("brick30", 1, true), "no BRICK-30 left")
 end)
 
+test("app: published names avoid trademarked game names", function()
+    -- Internal ids (file names, save slots) keep the old words; what players
+    -- and the launcher see must not.
+    local published = { read("app.json"), read("README.md") }
+    for _, id in ipairs(MENU_ORDER) do
+        published[#published + 1] = need("games/" .. id .. ".lua").name
+    end
+    for _, text in ipairs(published) do
+        for _, mark in ipairs({ "tetris", "breakout", "frogger" }) do
+            truthy(not text:lower():find(mark, 1, true), "mentions " .. mark)
+        end
+    end
+end)
+
 test("app: main.lua loads all 15 games in menu order", function()
     local list = read("main.lua"):match("GAME_IDS = (%b{})")
     local ids = {}

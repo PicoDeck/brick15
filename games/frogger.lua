@@ -160,7 +160,7 @@ end
 
 return {
     id = "frogger",
-    name = "FROGGER",
+    name = "CROSSING",
     hint = { "D-PAD HOP", "RIDE THE LOGS" },
     order = "high",
     demo = DEMO,

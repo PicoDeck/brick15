@@ -151,7 +151,7 @@ end
 
 return {
     id = "breakout",
-    name = "BREAKOUT",
+    name = "BRICKS",
     hint = { "< > MOVE", "ENTER SERVE" },
     order = "high",
     demo = DEMO,

@@ -6,11 +6,11 @@
 
 | # | Game | # | Game |
 |---|------|---|------|
-| 01 | Tetris | 09 | Asteroids |
+| 01 | Blocks | 09 | Asteroids |
 | 02 | Snake | 10 | Memory |
-| 03 | Breakout | 11 | Simon |
+| 03 | Bricks | 11 | Simon |
 | 04 | Invaders | 12 | Tic-Tac-Toe (vs CPU) |
-| 05 | Frogger | 13 | Moon Lander |
+| 05 | Crossing | 13 | Moon Lander |
 | 06 | Racer | 14 | Missile Command |
 | 07 | Pong (vs CPU) | 15 | Tank |
 | 08 | Copter | | |
@@ -36,7 +36,7 @@ When a round ends, the grid fills and clears like a curtain. Then Enter plays ag
 
 The panel is the same in every game:
 - SCORE and HI (or BEST);
-- NEXT: the next piece in Tetris, fuel in Moon Lander, shots left in Missile Command;
+- NEXT: the next piece in Blocks, fuel in Moon Lander, shots left in Missile Command;
 - SPEED and LEVEL;
 - LIVES;
 - the game's name and up to 3 status lines.
@@ -69,7 +69,7 @@ brick15/
   games/            one rules-only module per game (contract: lib/runner.lua)
   dev/
     test/           desktop unit tests: lua dev/test/run.lua
-    smoke.py        simulator smoke test: python3 dev/smoke.py [--only tetris,snake]
+    smoke.py        simulator smoke test: python3 dev/smoke.py [--only snake,pong]
     make_icon.py    regenerates icon.png
   docs/             design spec and implementation plans
 ```

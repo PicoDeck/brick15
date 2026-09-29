@@ -16,7 +16,7 @@ local function fill_row(game, r, except_from, except_to)
 end
 
 test("tetris: module metadata follows the game contract", function()
-    eq(tetris.id, "tetris", "id"); eq(tetris.name, "TETRIS", "name")
+    eq(tetris.id, "tetris", "id"); eq(tetris.name, "BLOCKS", "name")
     eq(tetris.order, "high", "order")
     eq(#tetris.demo, 2, "two demo frames")
     for _, f in ipairs(tetris.demo) do

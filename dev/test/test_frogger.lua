@@ -13,7 +13,7 @@ local function set_lane(g, row, pattern)
 end
 
 test("frogger: meets the game contract", function()
-    check_contract(frogger, "frogger", "FROGGER")
+    check_contract(frogger, "frogger", "CROSSING")
 end)
 
 test("frogger: frog starts on row 20, 3 lives, 5 empty homes", function()

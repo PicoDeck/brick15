@@ -11,7 +11,7 @@ local function launch(g, x, y, dx, dy, now)
 end
 
 test("breakout: meets the game contract", function()
-    check_contract(breakout, "breakout", "BREAKOUT")
+    check_contract(breakout, "breakout", "BRICKS")
 end)
 
 test("breakout: 40 bricks on rows 2-5, 3 lives, ball waiting on the paddle", function()

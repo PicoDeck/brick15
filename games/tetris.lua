@@ -198,7 +198,7 @@ end
 
 return {
     id = "tetris",
-    name = "TETRIS",
+    name = "BLOCKS",
     hint = { "< > MOVE", "UP ROTATE", "DOWN DROP" },
     order = "high",
     demo = DEMO,
