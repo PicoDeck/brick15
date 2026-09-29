@@ -56,6 +56,17 @@ test("missile: an explosion grows from radius 1 to 2 and then fades", function()
     eq(missile.radius(e, 500), nil, "gone")
 end)
 
+test("missile: the drawn blast grows to the 5x5 diamond and shows over the crosshair", function()
+    local g = new_game()
+    g:update(press("enter"), 0)            -- blast at the crosshair (5,10)
+    g:update(NONE, 200)                    -- radius 2 by now
+    local grid = draw_game(g)
+    eq(grid:get(7, 10), true, "diamond tip two cells right")
+    eq(grid:get(5, 12), true, "diamond tip two cells down")
+    eq(grid:get(6, 10), true, "steady, not the blinking crosshair")
+    eq(grid:get(7, 11), false, "a diamond, not a square")
+end)
+
 test("missile: a missile inside the blast is destroyed and scores", function()
     local g = new_game()
     g.missiles = { incoming(6, 6, 11) }     -- (6,11): 2 cells from (5,10)

@@ -79,6 +79,21 @@ test("tank: an enemy shot on the base ends the round with BASE LOST", function()
     eq(g.status[1], "BASE LOST", "headline"); check_status(tank, g)
 end)
 
+test("tank: an enemy's shot hits the wall right in front of it, not what's behind", function()
+    local g = new_game()
+    g.enemies = { { x = 8, y = 18, dir = "left" } }   -- beside the base's right wall
+    g.next_enemy, g.next_bullet = 0, math.huge
+    -- pin the enemy's choices: no random turn, turn "left", then fire
+    local real, draws = math.random, { 0.9, 0.1 }
+    math.random = function(n) if n then return 3 end return table.remove(draws, 1) or 0.5 end
+    local ok, err = pcall(function() g:update(NONE, 0) end)
+    math.random = real
+    assert(ok, err)
+    eq(g.walls[19][7], false, "the base's side wall takes the shot")
+    g.next_bullet = 0
+    eq(g:update(NONE, 100), nil, "round goes on"); eq(g.base_alive, true, "base intact")
+end)
+
 test("tank: losing the last life ends the round", function()
     local g = new_game()
     g.lives = 1

@@ -3,23 +3,6 @@ local copter = need("games/copter.lua")
 
 local function new_game() return copter.new(game_ctx()) end
 
--- Free columns of a tunnel row, as a set.
-local function free_cols(row)
-    local free = {}
-    for c = row.left + 1, 10 - row.right do
-        if c ~= row.block then free[c] = true end
-    end
-    return free
-end
-
-local function longest_run(free)
-    local best, run = 0, 0
-    for c = 1, 10 do
-        if free[c] then run = run + 1 best = math.max(best, run) else run = 0 end
-    end
-    return best
-end
-
 test("copter: meets the game contract", function()
     check_contract(copter, "copter", "COPTER")
 end)
@@ -52,30 +35,57 @@ test("copter: steering into the wall ends the round", function()
     eq(g:update(pad({ repeated = { "left" } }), 1), "over", "hit the wall")
 end)
 
-test("copter: the tunnel always leaves a way through", function()
-    local g = new_game()
-    for step = 1, 3000 do
-        g.x = nil                               -- no ship: just generate tunnel
-        g:scroll()
-        local a, b = g.rows[1], g.rows[2]       -- new row and the one below it
-        local fa, fb = free_cols(a), free_cols(b)
-        truthy(longest_run(fa) >= 3, "3-wide opening at step " .. step)
-        -- the nose (above) and the 3-wide body (below) must fit somewhere
-        local ok = false
-        for x = 2, 9 do
-            if fa[x] and fb[x - 1] and fb[x] and fb[x + 1] then ok = true end
+test("copter: a perfect pilot can always get through, at every level", function()
+    -- Valid ship columns for the current rows; between scrolls the pilot may
+    -- slide along valid columns (each step is checked), then must be on a
+    -- column that is still valid once the tunnel scrolls.
+    local function valid(g)
+        local function blocked(c, r)
+            local row = g.rows[r]
+            return c <= row.left or c > 10 - row.right or c == row.block
         end
-        truthy(ok, "passable at step " .. step)
-        if step % 60 == 0 then g.level = g.level + 1 end
+        local v = {}
+        for x = 2, 9 do
+            v[x] = not blocked(x, 18) and not blocked(x - 1, 19)
+                   and not blocked(x, 19) and not blocked(x + 1, 19)
+        end
+        return v
     end
+    local function run(seed, level_of)
+        math.randomseed(seed)
+        local g = new_game()
+        local reach = { [5] = true }
+        for step = 1, 2000 do
+            g.level = level_of(step)
+            local v, grown = valid(g), true
+            while grown do
+                grown = false
+                for x = 2, 9 do
+                    if reach[x] then
+                        for _, n in ipairs({ x - 1, x + 1 }) do
+                            if v[n] and not reach[n] then reach[n], grown = true, true end
+                        end
+                    end
+                end
+            end
+            g:scroll()
+            local after, any = valid(g), false
+            for x = 2, 9 do
+                if reach[x] and after[x] then any = true else reach[x] = nil end
+            end
+            truthy(any, "seed " .. seed .. " step " .. step .. " level " .. g.level .. ": no way through")
+        end
+    end
+    for seed = 1, 40 do run(seed, function(step) return step // 60 + 1 end) end
+    for seed = 1, 20 do run(seed, function() return 9 end) end
 end)
 
-test("copter: the gap narrows with level but never below 3", function()
+test("copter: the gap narrows with level but never below 4", function()
     local g = new_game()
     g.level = 9
     for _ = 1, 200 do g.x = nil g:scroll() end
     local row = g.rows[1]
-    eq(10 - row.left - row.right, 3, "narrowest gap")
+    eq(10 - row.left - row.right, 4, "narrowest gap")
 end)
 
 test("copter: every 60 rows of distance is a level", function()

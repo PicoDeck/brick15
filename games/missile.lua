@@ -99,6 +99,7 @@ local function new(ctx)
     end
 
     function game:update(pad, now)
+        self.now = now                      -- draw() sizes the blasts from it
         if pad.repeated.left and self.cx > 2 then self.cx = self.cx - 1 end
         if pad.repeated.right and self.cx < COLS - 1 then self.cx = self.cx + 1 end
         if pad.repeated.up and self.cy > 2 then self.cy = self.cy - 1 end
@@ -162,6 +163,8 @@ local function new(ctx)
             end
         end
         for _, m in ipairs(self.missiles) do grid:set(m.x, m.y, true) end
+        grid:stamp({ ".#.", "###", ".#." }, self.cx - 1, self.cy - 1, "blink")
+        -- blasts go over the crosshair, or one fired in place would be hidden
         local now = self.now or 0
         for _, e in ipairs(self.explosions) do
             local r = radius(e, now) or 0
@@ -171,7 +174,6 @@ local function new(ctx)
                 end
             end
         end
-        grid:stamp({ ".#.", "###", ".#." }, self.cx - 1, self.cy - 1, "blink")
         for i = 1, self.ammo do next:set((i - 1) % 4 + 1, (i - 1) // 4 + 1, true) end
     end
 

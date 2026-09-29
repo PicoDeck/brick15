@@ -5,7 +5,9 @@ local ROWS = 20
 local LANE_COL = { 3, 6 }         -- left column of each lane's 3-wide car
 local PLAYER_ROW = 17             -- the player's car fills rows 17-20
 local STEP_MS = 160               -- road speed at speed 1, level 1
-local SPACING = 7                 -- rows from one car's top to the next's
+local SPACING = 10                -- rows from one car's top to the next's: a car
+                                  -- hits you for 7 of its steps, so 10 leaves 3
+                                  -- steps to change lanes between two cars
 local SPAWN_Y = -3                -- new cars start just above the screen
 local CRASH_MS = 800              -- the road stops this long after a crash
 local ROWS_PER_LEVEL = 100

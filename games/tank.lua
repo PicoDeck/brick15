@@ -172,17 +172,22 @@ local function new(ctx)
         return nil
     end
 
+    -- Fire from tank t and resolve the shot's first cell at once, so it hits
+    -- whatever is right in front of the barrel. Returns "over" or nil.
+    local function shoot(t, owner, now)
+        fire(t, owner)
+        local r = hit(game.bullets[#game.bullets], now)
+        if r == "gone" then table.remove(game.bullets) end
+        return r == "over" and "over" or nil
+    end
+
     function game:update(pad, now)
         for dir in pairs(DIRS) do
             if pad.repeated[dir] then drive(self.player, dir) break end
         end
         if (pad.pressed.enter or pad.pressed.f1) and not player_shot_live() then
-            fire(self.player, "player")
             SFX.move()
-            local b = self.bullets[#self.bullets]
-            local r = hit(b, now)
-            if r == "over" then return "over" end
-            if r == "gone" then table.remove(self.bullets) end
+            if shoot(self.player, "player", now) then return "over" end
         end
 
         if now >= self.next_bullet then
@@ -222,7 +227,9 @@ local function new(ctx)
                 end
                 local has_shot = false
                 for _, b in ipairs(self.bullets) do has_shot = has_shot or b.from == e end
-                if not has_shot and math.random() < FIRE_CHANCE then fire(e, "enemy") end
+                if not has_shot and math.random() < FIRE_CHANCE then
+                    if shoot(e, "enemy", now) then return "over" end
+                end
             end
         end
         return nil

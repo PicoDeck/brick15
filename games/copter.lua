@@ -6,7 +6,7 @@ local SHIP = { ".#.", "###" }     -- nose on row 18, body on row 19
 local SHIP_ROW = 18
 local STEP_MS = 220               -- scroll speed at speed 1, level 1
 local ROWS_PER_LEVEL = 60
-local MIN_GAP = 3
+local MIN_GAP = 4                 -- a 3-wide ship can't follow a 3-wide gap that shifts
 local BLOCK_MIN_GAP = 6           -- blocks only appear in gaps this wide
 local BLOCK_CHANCE = 0.12
 
@@ -51,30 +51,41 @@ local function new(ctx)
         return math.max(MIN_GAP, 8 - game.level)
     end
 
-    -- Next tunnel row: per row, EITHER the gap changes width by one OR it
-    -- shifts by one, never both, so a 3-wide ship can always follow it.
+    -- Next tunnel row. Per row the gap EITHER changes width by one OR shifts
+    -- by one. The ship must fit both the rows before and after each scroll,
+    -- so blocks only go in a row whose gap held still after a block-free
+    -- row, and the row after a block holds still too (checked by the
+    -- "perfect pilot" test).
     local function next_row()
         local left, width = game.gen_left, game.gen_width
-        local want = target_width()
-        if width ~= want then
-            if width > want then
-                width = width - 1
-                if math.random(2) == 1 then left = left + 1 end
-            else
-                width = width + 1
-                if left > 0 and math.random(2) == 1 then left = left - 1 end
-            end
+        if game.gen_hold then
+            game.gen_hold = false
         else
-            local shift = math.random(-1, 1)
-            if left + shift >= 0 and left + shift + width <= COLS then left = left + shift end
+            local want = target_width()
+            if width ~= want then
+                if width > want then
+                    width = width - 1
+                    if math.random(2) == 1 then left = left + 1 end
+                else
+                    width = width + 1
+                    if left > 0 and math.random(2) == 1 then left = left - 1 end
+                end
+            else
+                local shift = math.random(-1, 1)
+                if left + shift >= 0 and left + shift + width <= COLS then left = left + shift end
+            end
+            left = math.max(0, math.min(COLS - width, left))
         end
-        left = math.max(0, math.min(COLS - width, left))
+        local still = left == game.gen_left and width == game.gen_width
         game.gen_left, game.gen_width = left, width
         local row = { left = left, right = COLS - left - width }
-        if width >= BLOCK_MIN_GAP and math.random() < BLOCK_CHANCE then
+        if still and not game.gen_block and width >= BLOCK_MIN_GAP
+           and math.random() < BLOCK_CHANCE then
             -- one cell in from either wall, leaving a wide free run
             row.block = math.random(2) == 1 and left + 2 or left + width - 1
+            game.gen_hold = true
         end
+        game.gen_block = row.block ~= nil
         return row
     end
 

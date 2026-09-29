@@ -66,6 +66,40 @@ test("racer: new cars keep at least 3 clear rows between them", function()
     end
 end)
 
+test("racer: a perfect driver can always survive: some lane stays reachable", function()
+    -- Record the traffic step by step (player parked off the road), then ask:
+    -- is there a lane that is safe now and reachable from a lane that was
+    -- safe last step? Switching happens between steps, so the new lane must
+    -- also be clear at the old car positions.
+    local function safe(cars, lane)
+        for _, c in ipairs(cars) do
+            if c.lane == lane and c.y + 3 >= 17 and c.y <= 20 then return false end
+        end
+        return true
+    end
+    for seed = 1, 200 do
+        math.randomseed(seed)
+        local g = new_game()
+        local reach = { [1] = true, [2] = true }
+        local prev = {}
+        for step = 1, 300 do
+            g.lane = 3
+            g:update(NONE, g.next_step)
+            local now_reach = {}
+            for lane = 1, 2 do
+                if safe(g.cars, lane) and (reach[lane] or
+                   ((reach[1] or reach[2]) and safe(prev, lane))) then
+                    now_reach[lane] = true
+                end
+            end
+            truthy(now_reach[1] or now_reach[2], "seed " .. seed .. " step " .. step .. ": no lane survives")
+            reach = now_reach
+            prev = {}
+            for i, c in ipairs(g.cars) do prev[i] = { lane = c.lane, y = c.y } end
+        end
+    end
+end)
+
 test("racer: every 100 rows of distance is a level", function()
     local g = new_game()
     g.score, g.distance = 99, 99
